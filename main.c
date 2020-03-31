@@ -36,7 +36,6 @@ static GLuint enableDOF;
 static GLfloat xRotSphere2;
 static GLfloat sphereZdistance;
 static GLfloat sphereZdistance2;
-static GLuint blurring;
 
 static GLuint sphereHits[2];
 static GLuint blurTicks[2];
@@ -58,7 +57,8 @@ static const GLfloat red[4] = { 0.7, 0.0, 0.0, 1.0 };
 struct UserSettings {
   GLuint enableAA;
   GLuint enableDOF;
-  char debug;
+  GLuint blur;
+  GLuint debug;
 };
 
 struct Sphere {
@@ -112,8 +112,6 @@ void init(void)
 	fpsTimeBase = 0;
 	framesElapsed=0;
 	fps = 999;
-	blurring = 0;
-
 
 	//Create font
 	glFontCreate(&font, "jramstet-glfont.glf", 0) || printf("\n\nERROR CREATING GLFONT\n");
@@ -188,7 +186,7 @@ void timer50ms(int x)
 	// if sphere1 is selected, but either 
 	//  - blurring disabled
 	//  - blurring enabled, but AA off
-	else if ( (!blurring) || (blurring && !enableAA) )
+	else if ( (!g_userSettings.blur) || (g_userSettings.blur && !enableAA) )
 	{
 		sphereZdistance = sphereZdistance - 3;
 
@@ -219,7 +217,7 @@ void timer50ms(int x)
 	// if sphere2 is selected, but either 
 	//  - blurring disabled
 	//  - blurring enabled, but AA off
-	else if ( (!blurring) || (blurring && !enableAA) )
+	else if ( (!g_userSettings.blur) || (g_userSettings.blur && !enableAA) )
 	{
 		sphereZdistance2 = sphereZdistance2 - 3;
 
@@ -252,7 +250,7 @@ void leftSphereRender()
 	// if selected, handle the distance (e.g. motion blurring)
 	if (sphereHits[0])
 	{
-		if (blurring)
+		if (g_userSettings.blur)
 		{
 			if (enableAA)
 			{
@@ -333,7 +331,7 @@ void rightSphereRender()
 	if (sphereHits[1])
 	{
 
-		if (blurring)
+		if (g_userSettings.blur)
 		{
 			if (enableAA)
 
@@ -498,10 +496,10 @@ void displayText()
 
 
 	// line4 of hud
-	itoa(blurring, tempc, 10);
+	itoa(g_userSettings.blur, tempc, 10);
 	strcpy(line4, "Blurring: ");
 	strcat(line4, tempc);
-	if (blurring && !enableAA && !enableDOF)
+	if (g_userSettings.blur && !enableAA && !enableDOF)
 		strcat(line4, "(but AA/DoF is off)");
 
 
@@ -776,7 +774,6 @@ void keyboard(unsigned char key, int x, int y)
 			sphereHits[1] = 0;
 			blurTicks[0] = 0;
 			blurTicks[1] = 0;
-			blurring = 0;
 			break;
 		case 'x':
 			g_userSettings.debug=0;
@@ -787,13 +784,9 @@ void keyboard(unsigned char key, int x, int y)
 
 		case 'b':
 		case 'B':
-			blurring=1;
+			g_userSettings.blur = g_userSettings.blur ? 0 : 1;
 			break;
 
-		case 'v':
-		case 'V':
-			blurring = 0;
-			break;
 		default:
 			break;
 
