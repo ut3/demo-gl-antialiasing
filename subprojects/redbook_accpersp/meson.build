@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-only
 #
 # Copyright 2020 J Rick Ramstetter, rick.ramstetter@gmail.com
-#
+# 
 # This file is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License, version 2
+# it under the terms of the GNU General Public License, version 2 
 # as published by the Free Software Foundation.
 #
 # This file is free software: you can redistribute it and/or modify
@@ -15,37 +15,26 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-project ('demo-gl-antialiasing', 'c', version : '1', license: 'GPLv2')
-sources = ['main.c']
-compiler = meson.get_compiler('c')
+project('redbook_accpersp', 'c')
 
 gl_dep = dependency('gl')
 
+compiler = meson.get_compiler('c')
 glut_dep = dependency('glut', required: false)
 if not glut_dep.found()
   glut_dep = compiler.find_library('glut')
 endif
 
-glu_dep = dependency('glu')
-
 math_dep = dependency('m', required: false)
 if not math_dep.found()
   math_dep = compiler.find_library('m')
-endif 
+endif
 
-glfont_proj = subproject('glfont')
-glfont_dep = glfont_proj.get_variable('glfont_dep')
-
-fpsTimer_proj = subproject('fpsTimer')
-fpsTimer_dep = fpsTimer_proj.get_variable('fpsTimer_dep')
-
-redbook_accpersp = subproject('redbook_accpersp')
-redbook_accpersp_dep = redbook_accpersp.get_variable('redbook_accpersp_dep')
-
-redbook_checker = subproject('redbook_checker')
-redbook_checker_dep = redbook_checker.get_variable('redbook_checker_dep')
-
-executable ('demo-gl-antialiasing', sources, 
-	dependencies: 
-		[gl_dep, glut_dep, glu_dep, math_dep, glfont_dep, fpsTimer_dep, redbook_accpersp_dep, redbook_checker_dep]
-)
+lib = shared_library('redbook_accpersp', 'accpersp.c', 
+          dependencies: [gl_dep, glut_dep, math_dep],
+          c_args: [ '-fPIC' ],
+          link_args: ['-pie', '-Wl,-E'])
+		              
+inc = include_directories('.')
+redbook_accpersp_dep = declare_dependency(link_with : lib, 
+                                          include_directories: inc)

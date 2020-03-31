@@ -3,9 +3,13 @@
 //Copyright (c) 1998 Brad Fish
 //See glFont.txt for terms of use
 //November 10, 1998
+
+// J Rick Ramstetter, Mar 31 2020
+// - Removed windows.h include
+// - corrected path to gl.h for Linux use
 //*********************************************************
 
-//#include <windows.h>
+// #include <windows.h>
 #include <stdio.h>
 #include <malloc.h>
 #include <string.h>

@@ -1,26 +1,34 @@
-/*
-    J Rick Ramstetter
-    Guy Kisel
-
-    CS 112 Spring 2008 Final Project
-
-    Portions of this project taken from the OpenGL tutorial files
-        accpersp.c and jitter.h
+/**
+ * SPDX-License-Identifier: GPL-2.0-only
+ *
+ * Copyright 2008-2020 J Rick Ramstetter, rick.ramstetter@gmail.com
+ *
+ * This file is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License, version 2
+ * as published by the Free Software Foundation.
+ *
+ * This file is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 2.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
 #include <GL/glut.h>
-//#include <stdlib.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+
+/* Redbook includes (see ./subprojects/) */
+#include "accpersp.h"
+#include "checker.h"
 #include "jitter.h"
+
 #include "glfont.h"
 
-
-#ifdef WIN32
-#define near zNear
-#define far zFar
-#endif
 
 #define PI_ 3.14159265358979323846
 #define    checkImageWidth 512
@@ -55,192 +63,96 @@ GLfloat redColor[] = { 0.7, 0.0, 0.0, 1.0 };
 
 void cleanup( int sig )
 {
-  // insert cleanup code here (i.e. deleting structures or so)
+	// insert cleanup code here (i.e. deleting structures or so)
 
 	glFontDestroy(&font);
-  exit( 0 );
+	exit( 0 );
 }
 
-
-/* accFrustum()
- * The first 6 arguments are identical to the glFrustum() call.
- * 
- * pixdx and pixdy are anti-alias jitter in pixels.
- * Set both equal to 0.0 for no anti-alias jitter.
- * eyedx and eyedy are depth-of field jitter in pixels.
- * Set both equal to 0.0 for no depth of field effects.
- *
- * focus is distance from eye to plane in focus.
- * focus must be greater than, but not equal to 0.0.
- *
- * Note that accFrustum() calls glTranslatef().  You will
- * probably want to insure that your ModelView matrix has been
- * initialized to identity before calling accFrustum().
-
- 
-THIS IS TAKEN DIRECTLY FROM OPENGL RED BOOK
-
- */
-void accFrustum(GLdouble left, GLdouble right, GLdouble bottom,
-   GLdouble top, GLdouble near, GLdouble far, GLdouble pixdx,
-   GLdouble pixdy, GLdouble eyedx, GLdouble eyedy, GLdouble focus)
-{
-   GLdouble xwsize, ywsize;
-   GLdouble dx, dy;
-   GLint viewport[4];
-
-   glGetIntegerv (GL_VIEWPORT, viewport);
-   
-   xwsize = right - left;
-   ywsize = top - bottom;
-   
-   dx = -(pixdx*xwsize/(GLdouble) viewport[2] + eyedx*near/focus);
-   dy = -(pixdy*ywsize/(GLdouble) viewport[3] + eyedy*near/focus);
-   
-   glMatrixMode(GL_PROJECTION);
-   glLoadIdentity();
-   glFrustum (left + dx, right + dx, bottom + dy, top + dy, near, far);
-   glMatrixMode(GL_MODELVIEW);
-   glLoadIdentity();
-   glTranslatef (-eyedx, -eyedy, 0.0);
-}
-
-/* accPerspective()
- *
- * The first 4 arguments are identical to the gluPerspective() call.
- * pixdx and pixdy are anti-alias jitter in pixels.
- * Set both equal to 0.0 for no anti-alias jitter.
- * eyedx and eyedy are depth-of field jitter in pixels.
- * Set both equal to 0.0 for no depth of field effects.
- *
- * focus is distance from eye to plane in focus.
- * focus must be greater than, but not equal to 0.0.
- *
- * Note that accPerspective() calls accFrustum().
-
-THIS IS TAKEN DIRECTLY FROM OPENGL RED BOOK
-
- */
-void accPerspective(GLdouble fovy, GLdouble aspect,
-   GLdouble near, GLdouble far, GLdouble pixdx, GLdouble pixdy,
-   GLdouble eyedx, GLdouble eyedy, GLdouble focus)
-{
-   GLdouble fov2,left,right,bottom,top;
-
-   fov2 = ((fovy*PI_) / 180.0) / 2.0;
-
-   top = near / (cos(fov2) / sin(fov2));
-   bottom = -top;
-
-   right = top * aspect;
-   left = -right;
-
-   accFrustum (left, right, bottom, top, near, far,
-               pixdx, pixdy, eyedx, eyedy, focus);
-}
-
-
-/* Create the checkerboard texture image 
-THIS CODE IS MOSTLY TAKEN FROM OPENGL RED BOOK
-*/
-void makeCheckImage(void)
-{
-   int i, j, c;
-   
-   for (i = 0; i < checkImageHeight; i++) {
-      for (j = 0; j < checkImageWidth; j++) {
-         c = ((((i&0x8)==0)^((j&0x8))==0))*255;
-         checkImage[i][j][0] = (GLubyte) c;
-         checkImage[i][j][1] = (GLubyte) c;
-         checkImage[i][j][2] = (GLubyte) c;
-         checkImage[i][j][3] = (GLubyte) 255;
-      }
-   }
-}
 
 
 
 /*  Initialize lighting and other values.
- */
+*/
 
 
 void init(void)
 {
-   GLfloat mat_ambient[] = { 1.0, 1.0, 1.0, 1.0 };
-   GLfloat mat_specular[] = { 1.0, 1.0, 1.0, 1.0 };
-   GLfloat light_position[] = { 0.0, 0.0, 10.0, 1.0 };
-   GLfloat lm_ambient[] = { 0.2, 0.2, 0.2, 1.0 };
+	GLfloat mat_ambient[] = { 1.0, 1.0, 1.0, 1.0 };
+	GLfloat mat_specular[] = { 1.0, 1.0, 1.0, 1.0 };
+	GLfloat light_position[] = { 0.0, 0.0, 10.0, 1.0 };
+	GLfloat lm_ambient[] = { 0.2, 0.2, 0.2, 1.0 };
 
 
-   enableAA = 0;
-   debug = 0;
-   enableDOF = 0;
-   sphereZdistance = 0;
-   sphereZdistance2 = 0;
-   xRotSphere = 0;
-   xRotSphere2 = 0;
+	enableAA = 0;
+	debug = 0;
+	enableDOF = 0;
+	sphereZdistance = 0;
+	sphereZdistance2 = 0;
+	xRotSphere = 0;
+	xRotSphere2 = 0;
 
-   sphereHits[0] = 0;
-   sphereHits[1] = 0;
+	sphereHits[0] = 0;
+	sphereHits[1] = 0;
 
-   blurTicks[0] = 0;
-   blurTicks[1] = 0;
+	blurTicks[0] = 0;
+	blurTicks[1] = 0;
 
-   fpsTimeCurrent = 0;
-   fpsTimeBase = 0;
-   framesElapsed=0;
-   fps = 999;
-   blurring = 0;
+	fpsTimeCurrent = 0;
+	fpsTimeBase = 0;
+	framesElapsed=0;
+	fps = 999;
+	blurring = 0;
 
 
-   //Create font
+	//Create font
 	glFontCreate(&font, "jramstet-glfont.glf", 0) || printf("\n\nERROR CREATING GLFONT\n");
 
-   glMaterialfv(GL_FRONT, GL_AMBIENT, mat_ambient);
-   glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
-   glMaterialf(GL_FRONT, GL_SHININESS, 50.0);
-   glLightfv(GL_LIGHT0, GL_POSITION, light_position);
-   glLightModelfv(GL_LIGHT_MODEL_AMBIENT, lm_ambient);
-   
-   glEnable(GL_LIGHTING);
-   glEnable(GL_LIGHT0);
-   glEnable(GL_DEPTH_TEST);
-   glEnable(GL_BLEND);
-   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-   glShadeModel (GL_FLAT);
+	glMaterialfv(GL_FRONT, GL_AMBIENT, mat_ambient);
+	glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
+	glMaterialf(GL_FRONT, GL_SHININESS, 50.0);
+	glLightfv(GL_LIGHT0, GL_POSITION, light_position);
+	glLightModelfv(GL_LIGHT_MODEL_AMBIENT, lm_ambient);
 
-    // create checkerboard texture
-    makeCheckImage();
+	glEnable(GL_LIGHTING);
+	glEnable(GL_LIGHT0);
+	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glShadeModel (GL_FLAT);
 
-   // set up the texture
-   glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-   glGenTextures(1, &texName);
-   glBindTexture(GL_TEXTURE_2D, texName);
-   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, checkImageWidth, checkImageHeight,
-                0, GL_RGBA, GL_UNSIGNED_BYTE, checkImage);
-   glTexImage2D(GL_TEXTURE_2D, 0, 4, checkImageWidth, checkImageHeight,
-                0, GL_RGBA, GL_UNSIGNED_BYTE, checkImage);
+	// create checkerboard texture
+	makeCheckImage(&checkImage[0][0][0], checkImageWidth, checkImageHeight);
 
-   
+	// set up the texture
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glGenTextures(1, &texName);
+	glBindTexture(GL_TEXTURE_2D, texName);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, checkImageWidth, checkImageHeight,
+			0, GL_RGBA, GL_UNSIGNED_BYTE, checkImage);
+	glTexImage2D(GL_TEXTURE_2D, 0, 4, checkImageWidth, checkImageHeight,
+			0, GL_RGBA, GL_UNSIGNED_BYTE, checkImage);
 
-   glClearColor(0.0, 0.0, 0.0, 1.0);
-   glClearAccum(0.0, 0.0, 0.0, 0.0);
+
+
+	glClearColor(0.0, 0.0, 0.0, 1.0);
+	glClearAccum(0.0, 0.0, 0.0, 0.0);
 }
 
 // print debug info if debug is enabled
 void currentInfo()
 {
-    if (debug)
-    {
-        printf("\n\ncurrent AA: %i", enableAA);
-        printf("\ncurrent DOF: %i", enableDOF);
+	if (debug)
+	{
+		printf("\n\ncurrent AA: %i", enableAA);
+		printf("\ncurrent DOF: %i", enableDOF);
 		printf("\ncurrent FPS: %i", fps);
 
-    }
+	}
 }
 
 
@@ -289,7 +201,7 @@ void timer50ms(int x)
 			xRotSphere2 = 0;
 		}
 		else
-			 xRotSphere2 = (sphereZdistance2 / (2 * PI_) ) * 360;
+			xRotSphere2 = (sphereZdistance2 / (2 * PI_) ) * 360;
 	}
 	// if sphere2 is selected, but either 
 	//  - blurring disabled
@@ -308,28 +220,28 @@ void timer50ms(int x)
 	}
 
 
-    /*
-		NOTE: 
-		Z distances for selected balls are handled in display() 
-		  such distances are dependant on the frame rate rather than
-		  the elapsed time
-	*/
+	/*
+NOTE: 
+Z distances for selected balls are handled in display() 
+such distances are dependant on the frame rate rather than
+the elapsed time
+*/
 
-   /* redisplay what's changed */
-    glutPostRedisplay();
+	/* redisplay what's changed */
+	glutPostRedisplay();
 
-    glutTimerFunc(50, timer50ms, 0);
+	glutTimerFunc(50, timer50ms, 0);
 
 }
 
 // Draw left sphere
 void leftSphereRender()
 {
- // if selected, handle the distance (e.g. motion blurring)
-   if (sphereHits[0])
-   {
-	 if (blurring)
-	 {
+	// if selected, handle the distance (e.g. motion blurring)
+	if (sphereHits[0])
+	{
+		if (blurring)
+		{
 			if (enableAA)
 			{
 				blurTicks[0]++;
@@ -349,10 +261,10 @@ void leftSphereRender()
 						blurTicks[0] = 0;
 					}	
 				}
-			
+
 			}
 			else if (enableDOF)
-			//assumed jitter is 8
+				//assumed jitter is 8
 			{
 				blurTicks[0]++;
 				if (blurTicks[0] >= 3)
@@ -364,8 +276,8 @@ void leftSphereRender()
 			// else
 			// BLURRING W/O DOF OR AA... DOES NOTHING
 			// handled by 50ms timer
-			    
-	  } //end if blurring
+
+		} //end if blurring
 
 		// if at end of plane
 		if(sphereZdistance < -48)
@@ -376,43 +288,43 @@ void leftSphereRender()
 		else
 			xRotSphere = (sphereZdistance / (2 * PI_) ) * 360;
 
-	   // set material properties for color red
-	   glMaterialfv(GL_FRONT, GL_DIFFUSE, redColor );
+		// set material properties for color red
+		glMaterialfv(GL_FRONT, GL_DIFFUSE, redColor );
 
-	   // disable the sphere click after 500 ms
-	   if (  (glutGet(GLUT_ELAPSED_TIME) - sphereHits[0] ) > 500)
-	   {
+		// disable the sphere click after 500 ms
+		if (  (glutGet(GLUT_ELAPSED_TIME) - sphereHits[0] ) > 500)
+		{
 			sphereHits[0] = 0;
-			
+
 			// reset bluring ticks for this sphere
 			blurTicks[0] = 0;	 
-	   }
-   }
-   else
-   {
-	    // normal sphere properties
+		}
+	}
+	else
+	{
+		// normal sphere properties
 		glMaterialfv(GL_FRONT, GL_DIFFUSE, sphereColor );
-		
-   }
-   glTranslatef (-2.0, -1.0, sphereZdistance);
-   glRotatef (xRotSphere, 1.0, 0.0, 0.0);
-   glRotatef (90.0, 0.0, 1.0, 0.0);
-   glutSolidSphere (1.0, 24, 24);
+
+	}
+	glTranslatef (-2.0, -1.0, sphereZdistance);
+	glRotatef (xRotSphere, 1.0, 0.0, 0.0);
+	glRotatef (90.0, 0.0, 1.0, 0.0);
+	glutSolidSphere (1.0, 24, 24);
 }
 
 
 // draw right sphere
 void rightSphereRender()
 {
-   // if selected, handle the distance (e.g. motion blurring)
-   if (sphereHits[1])
-   {
-	
-	   if (blurring)
-	   {
+	// if selected, handle the distance (e.g. motion blurring)
+	if (sphereHits[1])
+	{
+
+		if (blurring)
+		{
 			if (enableAA)
 
-			// BLURRING AND AA ENABLED
+				// BLURRING AND AA ENABLED
 			{
 				blurTicks[1]++;
 
@@ -431,12 +343,12 @@ void rightSphereRender()
 						blurTicks[1] = 0;
 					}	
 				}
-			
+
 			}
 			else if (enableDOF)
-			
-			// BLURRING AND DOF ENABLED
-			
+
+				// BLURRING AND DOF ENABLED
+
 			{
 				blurTicks[1]++;
 				if (blurTicks[1] >= 3)
@@ -445,11 +357,11 @@ void rightSphereRender()
 					blurTicks[1]=0;
 				}
 			}
-				// else
-				// BLURRING W/O DOF OR AA... DOES NOTHING
-				// handled by 50ms timer
-	   } // end if blurring
-	    
+			// else
+			// BLURRING W/O DOF OR AA... DOES NOTHING
+			// handled by 50ms timer
+		} // end if blurring
+
 
 		// if at end of plane
 		if(sphereZdistance2 < -48)
@@ -459,86 +371,86 @@ void rightSphereRender()
 		}
 		else
 			xRotSphere2 = (sphereZdistance2 / (2 * PI_) ) * 360;
-	
-	   // set material properties for color red
-	   glMaterialfv(GL_FRONT, GL_DIFFUSE, redColor );
 
-	   // disable the sphere click after 500 ms
-	   if (  (glutGet(GLUT_ELAPSED_TIME) - sphereHits[1] ) > 500)
-	   {
+		// set material properties for color red
+		glMaterialfv(GL_FRONT, GL_DIFFUSE, redColor );
+
+		// disable the sphere click after 500 ms
+		if (  (glutGet(GLUT_ELAPSED_TIME) - sphereHits[1] ) > 500)
+		{
 			sphereHits[1] = 0;
-			
+
 			// reset bluring ticks for this sphere
 			blurTicks[1] = 0;	 
-	   }
-   }
-   else
-   {
-	    // normal sphere properties
+		}
+	}
+	else
+	{
+		// normal sphere properties
 		glMaterialfv(GL_FRONT, GL_DIFFUSE, sphereColor2 );
-		
-   }
-   glTranslatef (2.0, -1.0, sphereZdistance2);
-   glRotatef (xRotSphere2, 1.0, 0.0, 0.0);
-   glRotatef (90.0, 0.0, 1.0, 0.0);
-   glutSolidSphere (1.0, 24, 24);
+
+	}
+	glTranslatef (2.0, -1.0, sphereZdistance2);
+	glRotatef (xRotSphere2, 1.0, 0.0, 0.0);
+	glRotatef (90.0, 0.0, 1.0, 0.0);
+	glutSolidSphere (1.0, 24, 24);
 }
 
 
 void displayObjects()
 
 {
-   glMatrixMode(GL_MODELVIEW);
+	glMatrixMode(GL_MODELVIEW);
 
 
-    // BEGIN LEFT SPHERE
-   glPushMatrix();
-   glPushName(1); 
-   leftSphereRender();
-   glPopName();
-   glPopMatrix();
-   // END LEFT SPHERE
+	// BEGIN LEFT SPHERE
+	glPushMatrix();
+	glPushName(1); 
+	leftSphereRender();
+	glPopName();
+	glPopMatrix();
+	// END LEFT SPHERE
 
 
 	// BEGIN RIGHT SPHERE
-   glPushMatrix();
-   glPushName(2);
-   rightSphereRender();
-   glPopName();
-   glPopMatrix();
-   // END RIGHT SPHERE
+	glPushMatrix();
+	glPushName(2);
+	rightSphereRender();
+	glPopName();
+	glPopMatrix();
+	// END RIGHT SPHERE
 
 
 
-   // BEGIN CHECKERBOARD FLOOR
-   glPushMatrix ();
-   glPushName(3);
-   glEnable(GL_TEXTURE_2D);
-   glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
-   glBindTexture(GL_TEXTURE_2D, texName);
-   glBegin(GL_QUADS);
-       glTexCoord2f(0.0, 0.0); glVertex3f(-5.0, -2.0, -50.0);
-       glTexCoord2f(0.0, 1.0); glVertex3f(-5.0, -2.0, 1.0);
-       glTexCoord2f(1.0, 1.0); glVertex3f(5.0, -2.0, 1.0);
-       glTexCoord2f(1.0, 0.0); glVertex3f(5.0, -2.0, -50.0);
-   glEnd();
-   glDisable(GL_TEXTURE_2D);
-   glPopName();
-   glPopMatrix();
-   // END CHECKERBOARD FLOOR
+	// BEGIN CHECKERBOARD FLOOR
+	glPushMatrix ();
+	glPushName(3);
+	glEnable(GL_TEXTURE_2D);
+	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
+	glBindTexture(GL_TEXTURE_2D, texName);
+	glBegin(GL_QUADS);
+	glTexCoord2f(0.0, 0.0); glVertex3f(-5.0, -2.0, -50.0);
+	glTexCoord2f(0.0, 1.0); glVertex3f(-5.0, -2.0, 1.0);
+	glTexCoord2f(1.0, 1.0); glVertex3f(5.0, -2.0, 1.0);
+	glTexCoord2f(1.0, 0.0); glVertex3f(5.0, -2.0, -50.0);
+	glEnd();
+	glDisable(GL_TEXTURE_2D);
+	glPopName();
+	glPopMatrix();
+	// END CHECKERBOARD FLOOR
 
-  
+
 }
 
 
 char *itoa(int num, char *str, int unused)
 {
-  if(str == NULL)
-  {
-    return NULL;
-  }
-  sprintf(str, "%d", num);
-  return str;
+	if(str == NULL)
+	{
+		return NULL;
+	}
+	sprintf(str, "%d", num);
+	return str;
 }
 
 
@@ -546,7 +458,7 @@ char *itoa(int num, char *str, int unused)
 // display 2d HUD (heads up display) text
 void displayText()
 {
-	
+
 	GLint viewport[4];
 
 	char tempc[15];
@@ -576,7 +488,7 @@ void displayText()
 	itoa(blurring, tempc, 10);
 	strcpy(line4, "Blurring: ");
 	strcat(line4, tempc);
-		if (blurring && !enableAA && !enableDOF)
+	if (blurring && !enableAA && !enableDOF)
 		strcat(line4, "(but AA/DoF is off)");
 
 
@@ -587,31 +499,31 @@ void displayText()
 
 	// get viewport values
 	glGetIntegerv (GL_VIEWPORT, viewport);
-	
+
 	// Set a temporary  & simple 2d projection matrix
 	//   normal projection will be replaced at the end of all this 
 	glMatrixMode(GL_PROJECTION);
-		glPushMatrix();
-		glLoadIdentity();
-		glOrtho(0, 640, 0, 480, -1, 1); // simple projection
+	glPushMatrix();
+	glLoadIdentity();
+	glOrtho(0, 640, 0, 480, -1, 1); // simple projection
 
 
 	// back to model mode to render the text
 	glMatrixMode(GL_MODELVIEW);
-		glPushMatrix();
-			glLoadIdentity();
-			glFontBegin(&font);
-				glScalef(8.0, 8.0, 8.0);
-				glTranslatef(15,15, 0);
-				glFontTextOut(line1, 1, 60 , 0);
-				glFontTextOut(line2, 1, 57 , 0);
-				glFontTextOut(line3, 1, 54 , 0);
-				glFontTextOut(line4, 1, 51 , 0);
-			glFontEnd();
-		glPopMatrix();
+	glPushMatrix();
+	glLoadIdentity();
+	glFontBegin(&font);
+	glScalef(8.0, 8.0, 8.0);
+	glTranslatef(15,15, 0);
+	glFontTextOut(line1, 1, 60 , 0);
+	glFontTextOut(line2, 1, 57 , 0);
+	glFontTextOut(line3, 1, 54 , 0);
+	glFontTextOut(line4, 1, 51 , 0);
+	glFontEnd();
+	glPopMatrix();
 
 	glMatrixMode(GL_PROJECTION);
-		glPopMatrix();
+	glPopMatrix();
 
 	glDisable(GL_TEXTURE_2D);
 	glDisable(GL_BLEND);
@@ -627,7 +539,7 @@ void displayText()
 void displayHelper()
 {
 	//glPushMatrix ();
-    glTranslatef (0.0, 0.0, -5.0);
+	glTranslatef (0.0, 0.0, -5.0);
 	displayObjects();
 	//displayText(); // should be in display() near the end
 	glFlush();
@@ -637,141 +549,141 @@ void displayHelper()
 
 void display(void)
 {
-    unsigned char jitter;
-    GLint viewport[4];
-    jitter_point* jitAry;
-    glGetIntegerv (GL_VIEWPORT, viewport);
+	unsigned char jitter;
+	GLint viewport[4];
+	jitter_point* jitAry;
+	glGetIntegerv (GL_VIEWPORT, viewport);
 
 	//for fps counter
 	framesElapsed++;
 
 	/*  rendering */
 
-   if (enableAA)
-   // if AA is on (regardless of DOF)
-   {
-       currentInfo();
-       switch(enableAA)
-       {
-        case 2:
-            jitAry = j2;
-            break;
-        case 4:
-            jitAry = j4;
-            break;
-        case 8:
-            jitAry = j8;
-            break;
-		case 15:
-			jitAry = j15;
-			break;
-		case 24:
-			jitAry = j24;
-			break;
-		case 66:
-			jitAry = j66;
-			break;
+	if (enableAA)
+		// if AA is on (regardless of DOF)
+	{
+		currentInfo();
+		switch(enableAA)
+		{
+			case 2:
+				jitAry = j2;
+				break;
+			case 4:
+				jitAry = j4;
+				break;
+			case 8:
+				jitAry = j8;
+				break;
+			case 15:
+				jitAry = j15;
+				break;
+			case 24:
+				jitAry = j24;
+				break;
+			case 66:
+				jitAry = j66;
+				break;
 
-        default:
-            printf("Undefined value of EnableAA! %i\n\n", enableAA);
-            break;
-       }
+			default:
+				printf("Undefined value of EnableAA! %i\n\n", enableAA);
+				break;
+		}
 
-       
-        glClear(GL_ACCUM_BUFFER_BIT);
-        for (jitter = 0; jitter < enableAA; jitter++)
 
-        {
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            if (enableDOF)
-            //both AA and DOF are enabled
-			//   DoF jitter count and AA jitter count are the same
-            {
-                currentInfo();
+		glClear(GL_ACCUM_BUFFER_BIT);
+		for (jitter = 0; jitter < enableAA; jitter++)
 
-                accPerspective (50.0,
-                 (GLdouble) viewport[2]/(GLdouble) viewport[3],
-                 1.0, 100.0, jitAry[jitter].x, jitAry[jitter].y, 0.33*jitAry[jitter].x, 0.33*jitAry[jitter].y, enableDOF+5);
+		{
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			if (enableDOF)
+				//both AA and DOF are enabled
+				//   DoF jitter count and AA jitter count are the same
+			{
+				currentInfo();
 
-            }
-            else
-            // only AA is enabled
-           {
-            currentInfo();
+				accPerspective (50.0,
+						(GLdouble) viewport[2]/(GLdouble) viewport[3],
+						1.0, 100.0, jitAry[jitter].x, jitAry[jitter].y, 0.33*jitAry[jitter].x, 0.33*jitAry[jitter].y, enableDOF+5);
 
-            accPerspective (50.0,
-                 (GLdouble) viewport[2]/(GLdouble) viewport[3],
-                 1.0, 100.0, j8[jitter].x, j8[jitter].y, 0.0, 0.0, 1.0);
-           
-           }
-      
-			
+			}
+			else
+				// only AA is enabled
+			{
+				currentInfo();
+
+				accPerspective (50.0,
+						(GLdouble) viewport[2]/(GLdouble) viewport[3],
+						1.0, 100.0, j8[jitter].x, j8[jitter].y, 0.0, 0.0, 1.0);
+
+			}
+
+
 			// render scene (but not HUD)
-            displayHelper (GL_RENDER);
+			displayHelper (GL_RENDER);
 
 			// set the ACCUM buffer
-            glAccum(GL_ACCUM, 1.0/enableAA);
+			glAccum(GL_ACCUM, 1.0/enableAA);
 
-        }
+		}
 
-       glAccum (GL_RETURN, 1.0);
+		glAccum (GL_RETURN, 1.0);
 
-   }
-   else if (enableDOF)
-   // only DOF is enabled
-   //   assume a jitter of 8 for DoF only
-   {
-         currentInfo();
+	}
+	else if (enableDOF)
+		// only DOF is enabled
+		//   assume a jitter of 8 for DoF only
+	{
+		currentInfo();
 
-         glClear(GL_ACCUM_BUFFER_BIT);
-         for (jitter = 0; jitter < 8; jitter++)
+		glClear(GL_ACCUM_BUFFER_BIT);
+		for (jitter = 0; jitter < 8; jitter++)
 
-         {
-             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-             accPerspective (50.0,
-                 (GLdouble) viewport[2]/(GLdouble) viewport[3],
-                 1.0, 100.0, 0.0, 0.0,
-                 0.33*j8[jitter].x, 0.33*j8[jitter].y, enableDOF+5);
-            displayHelper (GL_RENDER);
-            glAccum(GL_ACCUM, 1.0/8);
+		{
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			accPerspective (50.0,
+					(GLdouble) viewport[2]/(GLdouble) viewport[3],
+					1.0, 100.0, 0.0, 0.0,
+					0.33*j8[jitter].x, 0.33*j8[jitter].y, enableDOF+5);
+			displayHelper (GL_RENDER);
+			glAccum(GL_ACCUM, 1.0/8);
 
-         }
-        glAccum (GL_RETURN, 1.0);
+		}
+		glAccum (GL_RETURN, 1.0);
 
-   }
+	}
 
 
 
-   else
-   // neither AA nor DOF is currently enabled
-   {
-       currentInfo();
+	else
+		// neither AA nor DOF is currently enabled
+	{
+		currentInfo();
 
-         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-          accPerspective (50.0,
-             (GLdouble) viewport[2]/(GLdouble) viewport[3],
-             1.0, 100.0, 0.0, 0.0, 0.0, 0.0, 1.0);
-         displayHelper (GL_RENDER);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		accPerspective (50.0,
+				(GLdouble) viewport[2]/(GLdouble) viewport[3],
+				1.0, 100.0, 0.0, 0.0, 0.0, 0.0, 1.0);
+		displayHelper (GL_RENDER);
 
-   }
-   
+	}
 
-    // display the HUD
-    displayText();
+
+	// display the HUD
+	displayText();
 
 	// force openGL flush
 	glFlush();
 
 
-   /* fps  calcs */
+	/* fps  calcs */
 	fpsTimeCurrent=glutGet(GLUT_ELAPSED_TIME);
 	if (fpsTimeCurrent - fpsTimeBase > 1000) 
 	{
 		fps = ceil(framesElapsed*1000.0/(fpsTimeCurrent-fpsTimeBase));
-	 	fpsTimeBase = fpsTimeCurrent;		
+		fpsTimeBase = fpsTimeCurrent;		
 		framesElapsed = 0;
 	}
-	
+
 	glutSwapBuffers();
 } // end HUGE display() function
 
@@ -780,7 +692,7 @@ void display(void)
 // HANDLE WINDOW RESIZINGS
 void reshape(int w, int h)
 {
-   glViewport(0, 0, (GLsizei) w, (GLsizei) h);
+	glViewport(0, 0, (GLsizei) w, (GLsizei) h);
 }
 
 
@@ -790,103 +702,103 @@ void reshape(int w, int h)
 // HANDLE KEYBOARD PRESSES
 void keyboard(unsigned char key, int x, int y)
 {
-   switch (key)
-   {
-      case 27:
-         exit(0);
-         break;
-
-	  case '_':
-      case '-':	
-			  // for DOF > 50, speed up the adds
-			 if (enableDOF > 50)
-				 enableDOF=enableDOF-25;
-			 else if (enableDOF > 0)
-                 enableDOF--;
-          break;
-
-      case '+':
-      case '=':
-          if (enableDOF < 50)
-              enableDOF++;
-		  // for DOF > 50, speed up the subtracts
-		  else if (enableDOF < 1000)
-			  enableDOF=enableDOF+25;
-          break;
-
-      case '0':
-          enableAA=0;
-          break;
-
-      case '1':
-          enableAA=2;
-          break;
-
-      case '2':
-        enableAA=4;
-        break;
-
-      case '3':
-          enableAA=8;
-            break;
-
-      case '4':
-          enableAA=15;
-            break;
-
-	  case '5':
-		  enableAA=24;
-			break;
-	  case '6':
-		  enableAA=66;
+	switch (key)
+	{
+		case 27:
+			exit(0);
 			break;
 
-      case 'r':
-      case 'R':
-          enableAA=0;
-          enableDOF=0;
-          sphereZdistance = 0;
-          sphereZdistance2 =0;
-		  sphereHits[0] = 0;
-		  sphereHits[1] = 0;
-		  blurTicks[0] = 0;
-		  blurTicks[1] = 0;
-		  blurring = 0;
-          break;
-      case 'x':
-          debug=0;
-          break;
-      case 'X':
-          debug=1;
-          break;
+		case '_':
+		case '-':	
+			// for DOF > 50, speed up the adds
+			if (enableDOF > 50)
+				enableDOF=enableDOF-25;
+			else if (enableDOF > 0)
+				enableDOF--;
+			break;
 
-      case 'b':
-	  case 'B':
-          blurring=1;
-          break;
+		case '+':
+		case '=':
+			if (enableDOF < 50)
+				enableDOF++;
+			// for DOF > 50, speed up the subtracts
+			else if (enableDOF < 1000)
+				enableDOF=enableDOF+25;
+			break;
 
-	  case 'v':
-	  case 'V':
+		case '0':
+			enableAA=0;
+			break;
+
+		case '1':
+			enableAA=2;
+			break;
+
+		case '2':
+			enableAA=4;
+			break;
+
+		case '3':
+			enableAA=8;
+			break;
+
+		case '4':
+			enableAA=15;
+			break;
+
+		case '5':
+			enableAA=24;
+			break;
+		case '6':
+			enableAA=66;
+			break;
+
+		case 'r':
+		case 'R':
+			enableAA=0;
+			enableDOF=0;
+			sphereZdistance = 0;
+			sphereZdistance2 =0;
+			sphereHits[0] = 0;
+			sphereHits[1] = 0;
+			blurTicks[0] = 0;
+			blurTicks[1] = 0;
 			blurring = 0;
 			break;
-      default:
-        break;
+		case 'x':
+			debug=0;
+			break;
+		case 'X':
+			debug=1;
+			break;
+
+		case 'b':
+		case 'B':
+			blurring=1;
+			break;
+
+		case 'v':
+		case 'V':
+			blurring = 0;
+			break;
+		default:
+			break;
 
 
-   }
+	}
 
-    glutPostRedisplay();
+	glutPostRedisplay();
 
 }
 
 void processHits(GLint hits, GLuint buffer[], GLuint x, GLuint y)
 {
 
-   unsigned int i, j;
-   GLuint names, *ptr;
+	unsigned int i, j;
+	GLuint names, *ptr;
 
-   if (hits < 1)
-        return;
+	if (hits < 1)
+		return;
 
 	// If the user has clicked the left sphere
 	if ( (buffer[3]==1) || (hits > 1 &&(buffer[7]==1) ) )
@@ -905,43 +817,41 @@ void processHits(GLint hits, GLuint buffer[], GLuint x, GLuint y)
 	}
 
 
-	
+
 }
 
 void mouse(int button, int state, int x, int y)
 {
-   GLuint selectBuf[512];
-   GLint hits;
-   GLint viewport[4];
+	GLuint selectBuf[512];
+	GLint hits;
+	GLint viewport[4];
 
-   if (button != GLUT_LEFT_BUTTON || state != GLUT_DOWN)
-      return;
+	if (button != GLUT_LEFT_BUTTON || state != GLUT_DOWN)
+		return;
 
-   glGetIntegerv(GL_VIEWPORT, viewport);
+	glGetIntegerv(GL_VIEWPORT, viewport);
 
-   glSelectBuffer(512, selectBuf);
+	glSelectBuffer(512, selectBuf);
 	glMatrixMode(GL_PROJECTION);
 	glPushMatrix();
-	   glRenderMode(GL_SELECT);
-	   glLoadIdentity();
-	   gluPickMatrix((GLdouble) x, (GLdouble) (viewport[3] - y),
-                     5.0, 5.0, viewport);
-	   gluPerspective(50.0,
-             (GLdouble) viewport[2]/(GLdouble) viewport[3],
-             1.0, 100.0);
-	   glInitNames();
+	glRenderMode(GL_SELECT);
+	glLoadIdentity();
+	gluPickMatrix((GLdouble) x, (GLdouble) (viewport[3] - y),
+			5.0, 5.0, viewport);
+	gluPerspective(50.0,
+			(GLdouble) viewport[2]/(GLdouble) viewport[3],
+			1.0, 100.0);
+	glInitNames();
 
-	   displayObjects();
+	displayObjects();
 
-	   // determine what was clicked on
-	   hits = glRenderMode(GL_RENDER);
-	   processHits(hits, selectBuf, x, y);
+	// determine what was clicked on
+	hits = glRenderMode(GL_RENDER);
+	processHits(hits, selectBuf, x, y);
 
-	   glMatrixMode(GL_PROJECTION);
+	glMatrixMode(GL_PROJECTION);
 	glPopMatrix();
 	glMatrixMode(GL_MODELVIEW);
-
-  
 }
 
 /*  Main Loop
@@ -949,18 +859,17 @@ void mouse(int button, int state, int x, int y)
  */
 int main(int argc, char** argv)
 {
-   glutInit(&argc, argv);
-   glutInitDisplayMode (GLUT_DOUBLE | GLUT_RGB
-                        | GLUT_ACCUM | GLUT_DEPTH);
-   glutInitWindowSize (250, 250);
-   glutInitWindowPosition (100, 100);
-   glutCreateWindow (argv[0]);
-   init();
-   glutReshapeFunc(reshape);
-   glutDisplayFunc(display);
-   glutKeyboardFunc(keyboard);
-   glutMouseFunc(mouse);
-    glutTimerFunc(50, timer50ms, 0);
-   glutMainLoop();
-   return 0;
+	glutInit(&argc, argv);
+	glutInitDisplayMode (GLUT_DOUBLE | GLUT_RGB | GLUT_ACCUM | GLUT_DEPTH);
+	glutInitWindowSize (1024, 1024);
+	glutInitWindowPosition (100, 100);
+	glutCreateWindow (argv[0]);
+	init();
+	glutReshapeFunc(reshape);
+	glutDisplayFunc(display);
+	glutKeyboardFunc(keyboard);
+	glutMouseFunc(mouse);
+	glutTimerFunc(50, timer50ms, 0);
+	glutMainLoop();
+	return 0;
 }
