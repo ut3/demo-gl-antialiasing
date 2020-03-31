@@ -36,9 +36,6 @@ endif
 glfont_proj = subproject('glfont')
 glfont_dep = glfont_proj.get_variable('glfont_dep')
 
-fpsTimer_proj = subproject('fpsTimer')
-fpsTimer_dep = fpsTimer_proj.get_variable('fpsTimer_dep')
-
 redbook_accpersp = subproject('redbook_accpersp')
 redbook_accpersp_dep = redbook_accpersp.get_variable('redbook_accpersp_dep')
 
@@ -47,5 +44,5 @@ redbook_checker_dep = redbook_checker.get_variable('redbook_checker_dep')
 
 executable ('demo-gl-antialiasing', sources, 
 	dependencies: 
-		[gl_dep, glut_dep, glu_dep, math_dep, glfont_dep, fpsTimer_dep, redbook_accpersp_dep, redbook_checker_dep]
+		[gl_dep, glut_dep, glu_dep, math_dep, glfont_dep, redbook_accpersp_dep, redbook_checker_dep]
 )
