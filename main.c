@@ -33,11 +33,9 @@ static GLubyte checkImage[checkImageHeight][checkImageWidth][4];
 static GLuint texName;
 static GLuint enableAA;
 static GLuint enableDOF;
-static GLfloat xRotSphere;
 static GLfloat xRotSphere2;
 static GLfloat sphereZdistance;
 static GLfloat sphereZdistance2;
-static char debug;
 static GLuint blurring;
 
 static GLuint sphereHits[2];
@@ -52,9 +50,27 @@ GLFONT font;
 
 
 
-GLfloat sphereColor[] = { 0.7, 0.7, 0.0, 1.0 };
-GLfloat sphereColor2[] = { 0.0, 0.7, 0.7, 1.0 };
-GLfloat redColor[] = { 0.7, 0.0, 0.0, 1.0 };
+static const GLfloat yellow[4] = { 0.7, 0.7, 0.0, 1.0 };
+static const GLfloat greenish[4] = { 0.0, 0.7, 0.7, 1.0 };
+static const GLfloat red[4] = { 0.7, 0.0, 0.0, 1.0 };
+
+
+struct UserSettings {
+  GLuint enableAA;
+  GLuint enableDOF;
+  char debug;
+};
+
+struct Sphere {
+  GLuint hit;
+  GLuint blurTick;
+  GLfloat zDistance;
+  GLfloat rotation;
+  GLfloat color;
+};
+
+struct UserSettings g_userSettings;
+struct Sphere g_spheres[2];
 
 
 void cleanup( int sig )
@@ -79,13 +95,11 @@ void init(void)
 	GLfloat light_position[] = { 0.0, 0.0, 10.0, 1.0 };
 	GLfloat lm_ambient[] = { 0.2, 0.2, 0.2, 1.0 };
 
+	memset(&g_userSettings, 0, sizeof(g_userSettings));
+	memset(&g_spheres, 0, sizeof(g_spheres));
 
-	enableAA = 0;
-	debug = 0;
-	enableDOF = 0;
 	sphereZdistance = 0;
 	sphereZdistance2 = 0;
-	xRotSphere = 0;
 	xRotSphere2 = 0;
 
 	sphereHits[0] = 0;
@@ -142,7 +156,7 @@ void init(void)
 // print debug info if debug is enabled
 void currentInfo()
 {
-	if (debug)
+	if (g_userSettings.debug)
 	{
 		printf("\n\ncurrent AA: %i", enableAA);
 		printf("\ncurrent DOF: %i", enableDOF);
@@ -164,10 +178,11 @@ void timer50ms(int x)
 		if(sphereZdistance < -48)
 		{
 			sphereZdistance = 0.0;
-			xRotSphere = 0;
+			g_spheres[0].rotation = 0;
 		}
-		else
-			xRotSphere = (sphereZdistance / (2 * PI_) ) * 360;
+		else {
+			g_spheres[0].rotation = (sphereZdistance / (2 * PI_) ) * 360;
+		}
 
 	}
 	// if sphere1 is selected, but either 
@@ -180,10 +195,12 @@ void timer50ms(int x)
 		if(sphereZdistance < -48)
 		{
 			sphereZdistance = 0.0;
-			xRotSphere = 0;
+			g_spheres[0].rotation = 0;
 		}
 		else
-			xRotSphere = (sphereZdistance / (2 * PI_) ) * 360;
+		{
+			g_spheres[0].rotation = (sphereZdistance / (2 * PI_) ) * 360;
+		}
 	}
 
 
@@ -227,7 +244,6 @@ the elapsed time
 	glutPostRedisplay();
 
 	glutTimerFunc(50, timer50ms, 0);
-
 }
 
 // Draw left sphere
@@ -279,13 +295,14 @@ void leftSphereRender()
 		if(sphereZdistance < -48)
 		{
 			sphereZdistance = 0.0;
-			xRotSphere = 0;
+			g_spheres[0].rotation = 0.0;
 		}
-		else
-			xRotSphere = (sphereZdistance / (2 * PI_) ) * 360;
+		else {
+			g_spheres[0].rotation = (sphereZdistance / (2 * PI_) ) * 360;
+		}
 
 		// set material properties for color red
-		glMaterialfv(GL_FRONT, GL_DIFFUSE, redColor );
+		glMaterialfv(GL_FRONT, GL_DIFFUSE, red );
 
 		// disable the sphere click after 500 ms
 		if (  (glutGet(GLUT_ELAPSED_TIME) - sphereHits[0] ) > 500)
@@ -299,11 +316,11 @@ void leftSphereRender()
 	else
 	{
 		// normal sphere properties
-		glMaterialfv(GL_FRONT, GL_DIFFUSE, sphereColor );
+		glMaterialfv(GL_FRONT, GL_DIFFUSE, yellow );
 
 	}
 	glTranslatef (-2.0, -1.0, sphereZdistance);
-	glRotatef (xRotSphere, 1.0, 0.0, 0.0);
+	glRotatef (g_spheres[0].rotation, 1.0, 0.0, 0.0);
 	glRotatef (90.0, 0.0, 1.0, 0.0);
 	glutSolidSphere (1.0, 24, 24);
 }
@@ -369,7 +386,7 @@ void rightSphereRender()
 			xRotSphere2 = (sphereZdistance2 / (2 * PI_) ) * 360;
 
 		// set material properties for color red
-		glMaterialfv(GL_FRONT, GL_DIFFUSE, redColor );
+		glMaterialfv(GL_FRONT, GL_DIFFUSE, red );
 
 		// disable the sphere click after 500 ms
 		if (  (glutGet(GLUT_ELAPSED_TIME) - sphereHits[1] ) > 500)
@@ -383,7 +400,7 @@ void rightSphereRender()
 	else
 	{
 		// normal sphere properties
-		glMaterialfv(GL_FRONT, GL_DIFFUSE, sphereColor2 );
+		glMaterialfv(GL_FRONT, GL_DIFFUSE, greenish );
 
 	}
 	glTranslatef (2.0, -1.0, sphereZdistance2);
@@ -762,10 +779,10 @@ void keyboard(unsigned char key, int x, int y)
 			blurring = 0;
 			break;
 		case 'x':
-			debug=0;
+			g_userSettings.debug=0;
 			break;
 		case 'X':
-			debug=1;
+			g_userSettings.debug=1;
 			break;
 
 		case 'b':
@@ -799,7 +816,8 @@ void processHits(GLint hits, GLuint buffer[], GLuint x, GLuint y)
 	// If the user has clicked the left sphere
 	if ( (buffer[3]==1) || (hits > 1 &&(buffer[7]==1) ) )
 	{
-		debug && printf("clicked sphere left\n");
+		if (g_userSettings.debug)
+		  printf("clicked sphere left\n");
 
 		sphereHits[0] = glutGet(GLUT_ELAPSED_TIME);
 	}
@@ -807,7 +825,8 @@ void processHits(GLint hits, GLuint buffer[], GLuint x, GLuint y)
 	// If the user has clicked the right sphere
 	if ( (buffer[3]==2) || (hits > 1 && (buffer[7]==2) ) )
 	{
-		debug && printf("clicked sphere right\n");
+		if (g_userSettings.debug)
+		  printf("clicked sphere right\n");
 
 		sphereHits[1] = glutGet(GLUT_ELAPSED_TIME);
 	}
@@ -850,9 +869,7 @@ void mouse(int button, int state, int x, int y)
 	glMatrixMode(GL_MODELVIEW);
 }
 
-/*  Main Loop
- *  Be certain you request an accumulation buffer.
- */
+
 int main(int argc, char** argv)
 {
 	glutInit(&argc, argv);
