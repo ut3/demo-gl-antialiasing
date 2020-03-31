@@ -40,10 +40,6 @@ static GLfloat sphereZdistance2;
 static GLuint sphereHits[2];
 static GLuint blurTicks[2];
 
-static GLuint framesElapsed;
-static GLuint fpsTimeCurrent, fpsTimeBase;
-static GLuint fps;
-
 
 GLFONT font;
 
@@ -69,8 +65,15 @@ struct Sphere {
   GLfloat color;
 };
 
+struct State {
+  GLuint fps;
+  GLuint baseTime;
+  GLuint framesElapsed;
+};
+
 struct UserSettings g_userSettings;
 struct Sphere g_spheres[2];
+struct State g_state;
 
 
 void cleanup( int sig )
@@ -98,6 +101,9 @@ void init(void)
 	memset(&g_userSettings, 0, sizeof(g_userSettings));
 	memset(&g_spheres, 0, sizeof(g_spheres));
 
+	memset(&g_state, 0, sizeof(g_state));
+	g_state.fps = 9999;
+
 	sphereZdistance = 0;
 	sphereZdistance2 = 0;
 	xRotSphere2 = 0;
@@ -108,10 +114,7 @@ void init(void)
 	blurTicks[0] = 0;
 	blurTicks[1] = 0;
 
-	fpsTimeCurrent = 0;
-	fpsTimeBase = 0;
-	framesElapsed=0;
-	fps = 999;
+	g_state.fps = 999;
 
 	//Create font
 	glFontCreate(&font, "jramstet-glfont.glf", 0) || printf("\n\nERROR CREATING GLFONT\n");
@@ -158,7 +161,7 @@ void currentInfo()
 	{
 		printf("\n\ncurrent AA: %i", enableAA);
 		printf("\ncurrent DOF: %i", enableDOF);
-		printf("\ncurrent FPS: %i", fps);
+		printf("\ncurrent FPS: %i", g_state.fps);
 
 	}
 }
@@ -469,7 +472,6 @@ char *itoa(int num, char *str, int unused)
 // display 2d HUD (heads up display) text
 void displayText()
 {
-
 	GLint viewport[4];
 
 	char tempc[15];
@@ -480,7 +482,7 @@ void displayText()
 	char line4[30];
 
 	// line1 of hud
-	itoa(fps, tempc, 10);
+	itoa(g_state.fps, tempc, 10);
 	strcpy(line1, "FPS: ");
 	strcat(line1, tempc );
 
@@ -558,6 +560,19 @@ void displayHelper()
 }
 
 
+void updateFps()
+{
+  GLuint fpsTimeCurrent = glutGet(GLUT_ELAPSED_TIME);
+  if (fpsTimeCurrent - g_state.baseTime > 1000)
+  {
+	g_state.fps = ceil( g_state.framesElapsed*1000.0 /
+					 (fpsTimeCurrent-g_state.baseTime) );
+	g_state.baseTime = fpsTimeCurrent;
+	g_state.framesElapsed = 0;
+  }
+}
+
+
 void display(void)
 {
 	unsigned char jitter;
@@ -565,8 +580,7 @@ void display(void)
 	jitter_point* jitAry;
 	glGetIntegerv (GL_VIEWPORT, viewport);
 
-	//for fps counter
-	framesElapsed++;
+	++g_state.framesElapsed;
 
 	/*  rendering */
 
@@ -685,15 +699,7 @@ void display(void)
 	// force openGL flush
 	glFlush();
 
-
-	/* fps  calcs */
-	fpsTimeCurrent=glutGet(GLUT_ELAPSED_TIME);
-	if (fpsTimeCurrent - fpsTimeBase > 1000) 
-	{
-		fps = ceil(framesElapsed*1000.0/(fpsTimeCurrent-fpsTimeBase));
-		fpsTimeBase = fpsTimeCurrent;		
-		framesElapsed = 0;
-	}
+	updateFps();
 
 	glutSwapBuffers();
 } // end HUGE display() function
@@ -774,12 +780,13 @@ void keyboard(unsigned char key, int x, int y)
 			sphereHits[1] = 0;
 			blurTicks[0] = 0;
 			blurTicks[1] = 0;
+			memset(&g_userSettings, 0, sizeof(g_userSettings));
+			memset(&g_spheres, 0, sizeof(g_spheres));
+			memset(&g_state, 0, sizeof(g_state));
 			break;
-		case 'x':
-			g_userSettings.debug=0;
-			break;
-		case 'X':
-			g_userSettings.debug=1;
+		case 'd':
+		case 'D':
+			g_userSettings.debug = g_userSettings.debug ? 0 : 1;
 			break;
 
 		case 'b':
