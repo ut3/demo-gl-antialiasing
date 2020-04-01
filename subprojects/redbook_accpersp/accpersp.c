@@ -57,7 +57,7 @@
 #define far zFar
 #endif
 
-/* #define PI_ 3.14159265358979323846 */
+#define PI_ 3.14159265358979323846
 
 /* accFrustum()
  * The first 6 arguments are identical to the glFrustum() call.

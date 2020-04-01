@@ -21,6 +21,7 @@
 #include <math.h>
 #include <string.h>
 #include <unistd.h>
+#include <assert.h>
 
 #include <GL/gl.h>
 #include <GL/glut.h>
@@ -43,32 +44,38 @@ static const char* g_colorNames[] = {
 /* the color of warp 9 */
 static const GLfloat g_red[4] = { 0.7, 0.0, 0.0, 1.0 };
 
+static const GLint g_fpsTarget = 40;
 
 struct UserSettings
 {
   GLuint enableAA; /* 0 if disabled, a jitter index from jitter.h otherwise */
   GLuint enableDOF; /* 0 if disabled, 1-250 otherwise */
-  GLuint blur; /* 1 if motion blur is enabled */
+  GLuint enableBlur; /* count of frames to motion blur on hit */
   GLuint debug; /* 1 if enabled */
   GLfloat fovAngle;
+  GLuint hitDuration; /* time in milliseconds that hits are reported */
 };
 
 struct Sphere
 {
   GLuint hit; /* if 1 glut reports a GL_PROJECTION hit */
-  GLuint blurring; /* 1..N if motion blur enabled. The GL_ACCUM frame count. */
   GLfloat zDistance;
   GLfloat rotation; /* X rotation (roll effect) */
   GLint colorIdx; /* see g_colors[] */
   GLint glName; /* unique id for glPushName */
   GLfloat zSpeed; /* How fast to move on Z */
+  GLfloat zSpeedDefault;
+  GLfloat radius;
+  GLfloat xOffset;
 };
 
 struct State
 {
   GLuint fps;
   GLuint baseTime;
-  GLuint framesElapsed;
+  GLuint framesRendered; /* does not include motion blur or jitter frames */
+
+  GLuint blurredFrames; /* motion blur */
 };
 
 struct CheckerboardFloor
@@ -125,23 +132,33 @@ static void ResetData()
 	/* User settings */
 	memset(&g_userSettings, 0, sizeof(g_userSettings));
 	g_userSettings.fovAngle = 50.0;
+	g_userSettings.hitDuration = 500; /* millisec */
 
 	/* Program state */
 	memset(&g_state, 0, sizeof(g_state));
 
 	/* Spheres */
 	memset(&g_spheres, 0, sizeof(g_spheres));
+
+	/* TODO make dynamic */
+	g_spheres[0].xOffset = -2.0;
+	g_spheres[1].xOffset = 2.0;
+
 	for (int i = 0; i < sizeof(g_spheres) / sizeof(g_spheres[0]); ++i)
 	{
 		struct Sphere* sphere = &g_spheres[i];
 		sphere->glName = i + 1;
 		sphere->colorIdx = i % ( sizeof(g_colors) / sizeof(g_colors[0]) );
-		sphere->zSpeed = (float) RandomInt1to20() / 40.0f;
+		sphere->zSpeedDefault = (float) RandomInt1to20() / 40.0f;
+		sphere->zSpeed = sphere->zSpeedDefault;
+		sphere->radius = 1.0;
 
-		printf("Set sphere %d to color %s (idx: %d) and speed %f\n",
-				sphere->glName, g_colorNames[sphere->colorIdx],
-				sphere->colorIdx,
-				sphere->zSpeed);
+		printf("Set sphere %d to color %s (idx: %d), speed %f, radius %f, offset %f\n",
+				sphere->glName,
+				g_colorNames[sphere->colorIdx], sphere->colorIdx,
+				sphere->zSpeed,
+				sphere->radius,
+				sphere->xOffset);
 	}
 }
 
@@ -167,7 +184,7 @@ static void InitGL()
 	glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
 	glMaterialf(GL_FRONT, GL_SHININESS, 50.0);
 
-	GLfloat light_position[] = { 0.0, 0.0, 10.0, 1.0 };
+	GLfloat light_position[] = { 0.0, 20.0, 0.0, 1.0 };
 	glLightfv(GL_LIGHT0, GL_POSITION, light_position);
 
 	GLfloat lm_ambient[] = { 0.2, 0.2, 0.2, 1.0 };
@@ -176,6 +193,7 @@ static void InitGL()
 	glEnable(GL_LIGHTING);
 	glEnable(GL_LIGHT0);
 	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_LESS);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glShadeModel (GL_FLAT);
@@ -188,8 +206,6 @@ static void InitGL()
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, g_floor.width, g_floor.height,
-			0, GL_RGBA, GL_UNSIGNED_BYTE, g_floor.image);
-	glTexImage2D(GL_TEXTURE_2D, 0, 4, g_floor.width, g_floor.height,
 			0, GL_RGBA, GL_UNSIGNED_BYTE, g_floor.image);
 
 	glClearColor(0.0, 0.0, 0.0, 1.0);
@@ -216,11 +232,8 @@ static void PrintData()
 		printf("FPS: %u\n", g_state.fps);
 		printf("AA jitter: %u\n", g_userSettings.enableAA);
 		printf("Depth of field: %u\n", g_userSettings.enableDOF);
-		printf ("FoV angle: %f\n", g_userSettings.fovAngle);
-		printf("Motion blur: %u%s\n", g_userSettings.blur,
-				(g_userSettings.blur && !g_userSettings.enableAA &&
-						!g_userSettings.enableDOF) ? " (AA&DoF off)" : ""
-				);
+		printf("FoV angle: %f\n", g_userSettings.fovAngle);
+		printf("Motion blur frames: %u\n", g_userSettings.enableBlur);
 	}
 	glutTimerFunc(1000, PrintData, 0);
 }
@@ -228,39 +241,48 @@ static void PrintData()
 
 static void UpdateFps()
 {
-	if (!g_userSettings.debug)
-		return;
-
+	++g_state.framesRendered;
 	GLuint fpsTimeCurrent = glutGet(GLUT_ELAPSED_TIME);
 	if (fpsTimeCurrent - g_state.baseTime > 1000)
 	{
-		g_state.fps = ceil( g_state.framesElapsed*1000.0 /
+		g_state.fps = ceil( g_state.framesRendered*1000.0 /
 						 (fpsTimeCurrent-g_state.baseTime) );
 		g_state.baseTime = fpsTimeCurrent;
-		g_state.framesElapsed = 0;
+		g_state.framesRendered = 0;
 	}
 }
 
 
 static void SphereRotationAndZ(struct Sphere* sphere)
 {
-	GLfloat step = sphere->zSpeed;
 	if (sphere->hit &&
-	    (!g_userSettings.blur ||
-		 (!g_userSettings.enableAA && !g_userSettings.enableDOF)))
+		((glutGet(GLUT_ELAPSED_TIME) - sphere->hit) > g_userSettings.hitDuration))
+	{
+		sphere->hit = 0;
+	}
+
+	GLfloat step = sphere->zSpeed;
+	if (sphere->hit)
 	{
 		step *= 4;
 		if (1.0 > step)
 			step = 1.0;
+
+		if (g_userSettings.enableBlur)
+		{
+			step = step / g_userSettings.enableBlur;
+		}
 	}
 
 	sphere->zDistance -= step;
-	sphere->rotation = (g_spheres[0].zDistance / (2 * PI_) ) * 360;
+	assert(sphere->zDistance <= 0.0);
+
+	sphere->rotation = (sphere->zDistance / sphere->radius) * (180.0 / M_PI);
 
 	if(sphere->zDistance < -48.0)
 	{
 		sphere->zDistance = 0.0;
-		sphere->rotation = 0;
+		sphere->rotation = 0.0;
 	}
 }
 
@@ -271,23 +293,30 @@ Z distances for selected balls are handled in display()
 such distances are dependant on the frame rate rather than
 the elapsed time
 */
-void Timer25ms(int x) /* 1000 / 25ms = ~40fps */
+void TickTimer(int _unused)
 {
 	for (int i = 0; i < sizeof(g_spheres) / sizeof(g_spheres[0]); ++i)
 	{
-		SphereRotationAndZ(&g_spheres[i]);
+		struct Sphere *sphere = &g_spheres[i];
+		if (g_userSettings.enableBlur && !sphere->hit)
+		{
+			/* When blur is enabled, only the Render functions move z */
+			continue;
+		}
+		SphereRotationAndZ(sphere);
 	}
 
 	glutPostRedisplay();
-	glutTimerFunc(25, Timer25ms, 0);
+	glutTimerFunc(25, TickTimer, 0);
 }
 
-void RenderSphere(struct Sphere* sphere, GLfloat x_translate)
+void RenderSphere(struct Sphere* sphere)
 {
 	glPushMatrix();
 	glPushName(sphere->glName); 
 
 	// if selected, handle the distance (e.g. motion blurring)
+	/*
 	if (sphere->hit)
 	{
 		if (g_userSettings.blur)
@@ -326,16 +355,6 @@ void RenderSphere(struct Sphere* sphere, GLfloat x_translate)
 
 		} //end if blurring
 
-		// if at end of plane
-		if(sphere->zDistance < -48)
-		{
-			sphere->zDistance = 0.0;
-			sphere->rotation = 0.0;
-		}
-		else {
-			sphere->rotation = (sphere->zDistance / (2 * M_PI) ) * 360;
-		}
-
 		// set material properties for color red
 		glMaterialfv(GL_FRONT, GL_DIFFUSE, g_red );
 
@@ -354,26 +373,44 @@ void RenderSphere(struct Sphere* sphere, GLfloat x_translate)
 		glMaterialfv(GL_FRONT, GL_DIFFUSE, g_colors[sphere->colorIdx]);
 
 	}
-	glTranslatef (x_translate, -1.0, sphere->zDistance);
+	*/
+
+	if (sphere->hit)
+	{
+		glMaterialfv(GL_FRONT, GL_DIFFUSE, g_red);
+	}
+	else
+	{
+		glMaterialfv(GL_FRONT, GL_DIFFUSE, g_colors[sphere->colorIdx]);
+	}
+
+	glTranslatef (sphere->xOffset, -1.0, sphere->zDistance);
+
 	glRotatef (sphere->rotation, 1.0, 0.0, 0.0);
 	glRotatef (90.0, 0.0, 1.0, 0.0);
-	glutSolidSphere (1.0, 24, 24);
+	glutSolidSphere (sphere->radius, 24, 24);
 
 	glPopName();
 	glPopMatrix();
 }
 
-static void DisplayObjects()
+static void RenderObjects()
 {
-	glTranslatef (0.0, 0.0, -5.0);
-	glMatrixMode(GL_MODELVIEW);
 	glInitNames();
 
-	RenderSphere(&g_spheres[0], -2.0);
-	RenderSphere(&g_spheres[1], 2.0);
+	for (int i = 0; i < sizeof(g_spheres) / sizeof(g_spheres[0]); ++i)
+	{
+		RenderSphere(&g_spheres[i]);
+	}
+}
 
-	glPushMatrix ();
-	glPushName(3);
+static void RenderScene()
+{
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+
+	/* Floor */
+	glPushMatrix();
 	glEnable(GL_TEXTURE_2D);
 	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
 	glBindTexture(GL_TEXTURE_2D, g_floor.texName);
@@ -384,39 +421,75 @@ static void DisplayObjects()
 	glTexCoord2f(1.0, 0.0); glVertex3f(5.0, -2.0, -50.0);
 	glEnd();
 	glDisable(GL_TEXTURE_2D);
-	glPopName();
 	glPopMatrix();
-}
 
-
-static void GlutDisplayVanilla(GLint *viewport)
-{
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	accPerspective (g_userSettings.fovAngle,
-			(GLdouble) viewport[2]/(GLdouble) viewport[3],
-			1.0, 100.0, 0.0, 0.0, 0.0, 0.0, 1.0);
-	DisplayObjects();
+	RenderObjects();
 }
 
 
 static void GlutDisplay()
 {
+
+	TickTimer(0);
+
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
 	GLint viewport[4];
 	glGetIntegerv (GL_VIEWPORT, viewport);
 
 	if (0 == g_userSettings.enableAA &&
 		0 == g_userSettings.enableDOF &&
-		0 == g_userSettings.blur)
+		0 == g_userSettings.enableBlur)
 	{
-		GlutDisplayVanilla(viewport);
+		glMatrixMode(GL_PROJECTION);
+		glLoadIdentity();
+		gluPerspective(g_userSettings.fovAngle,
+				(GLdouble) viewport[2] / (GLdouble) viewport[3],
+				1.0, 100.0);
+		RenderScene();
+		glutSwapBuffers();
 		goto finish;
+	}
+
+	if (g_userSettings.enableBlur)
+	{
+		glClear(GL_ACCUM_BUFFER_BIT);
+
+		glMatrixMode(GL_PROJECTION);
+		glLoadIdentity();
+		gluPerspective(g_userSettings.fovAngle,
+				(GLdouble) viewport[2] / (GLdouble) viewport[3],
+				1.0, 100.0);
+
+		for (int i = 0; i < sizeof(g_spheres) / sizeof(g_spheres[0]); ++i)
+		{
+			struct Sphere *sphere = &g_spheres[i];
+			if (!sphere->hit)
+			{
+				/* When no hit, no blur. Let timer move z. */
+				continue;
+			}
+			SphereRotationAndZ(sphere);
+		}
+
+		//RenderScene();
+		glAccum(0 == g_state.blurredFrames ? GL_LOAD : GL_ACCUM,
+				1.0 / g_userSettings.enableBlur);
+		++g_state.blurredFrames;
+
+		if (g_state.blurredFrames >= g_userSettings.enableBlur)
+		{
+			glAccum(GL_RETURN, 1.0);
+			glutSwapBuffers();
+			g_state.blurredFrames = 0;
+		}
+		return;
 	}
 
 
 	unsigned char jitter;
 	jitter_point* jitAry;
 
-	++g_state.framesElapsed;
 
 	/*  rendering */
 
@@ -479,7 +552,7 @@ static void GlutDisplay()
 
 
 			// render scene (but not HUD)
-			DisplayObjects ();
+			RenderScene ();
 
 			// set the ACCUM buffer
 			glAccum(GL_ACCUM, 1.0/g_userSettings.enableAA);
@@ -502,7 +575,7 @@ static void GlutDisplay()
 					(GLdouble) viewport[2]/(GLdouble) viewport[3],
 					1.0, 100.0, 0.0, 0.0,
 					0.33*j8[jitter].x, 0.33*j8[jitter].y, g_userSettings.enableDOF+5);
-			DisplayObjects();
+			RenderScene();
 			glAccum(GL_ACCUM, 1.0/8);
 
 		}
@@ -519,13 +592,11 @@ static void GlutDisplay()
 		accPerspective (g_userSettings.fovAngle,
 				(GLdouble) viewport[2]/(GLdouble) viewport[3],
 				1.0, 100.0, 0.0, 0.0, 0.0, 0.0, 1.0);
-		DisplayObjects();
+		RenderScene();
 	}
 
 finish:
-	glFlush();
 	UpdateFps();
-	glutSwapBuffers();
 }
 
 
@@ -602,15 +673,15 @@ static void Keyboard(unsigned char key, int x, int y)
 
 		case 'b':
 		case 'B':
-			g_userSettings.blur = g_userSettings.blur ? 0 : 1;
-			printf("%s motion blur\n", g_userSettings.blur ? "Enabled" : "Disabled");
+			g_userSettings.enableBlur =
+					g_userSettings.enableBlur ? 0 :
+					(GLfloat) g_fpsTarget * ((GLfloat) g_userSettings.hitDuration / 1000.0f);
+			printf("%s motion blur\n", g_userSettings.enableBlur ? "Enabled" : "Disabled");
 			break;
 
 		default:
 			break;
 	}
-
-	glutPostRedisplay();
 }
 
 
@@ -626,17 +697,17 @@ static void Mouse(int button, int state, int x, int y)
 	glSelectBuffer(512, selectBuf);
 
 	glMatrixMode(GL_PROJECTION);
-	glPushMatrix();
-	glRenderMode(GL_SELECT);
 	glLoadIdentity();
+
 	gluPickMatrix((GLdouble) x, (GLdouble) (viewport[3] - y),
-			5.0, 5.0, viewport);
+			10.0, 10.0, viewport);
+
 	gluPerspective(g_userSettings.fovAngle,
 			(GLdouble) viewport[2]/(GLdouble) viewport[3],
 			1.0, 100.0);
 
-	DisplayObjects();
-
+	glRenderMode(GL_SELECT);
+	RenderObjects();
 	GLint hits = glRenderMode(GL_RENDER);
 	if (hits > 0)
 	{
@@ -652,10 +723,6 @@ static void Mouse(int button, int state, int x, int y)
 			}
 		}
 	}
-
-	glMatrixMode(GL_PROJECTION);
-	glPopMatrix();
-	glMatrixMode(GL_MODELVIEW);
 }
 
 
@@ -672,7 +739,7 @@ int main(int argc, char** argv)
 	glutDisplayFunc(GlutDisplay);
 	glutKeyboardFunc(Keyboard);
 	glutMouseFunc(Mouse);
-	glutTimerFunc(25, Timer25ms, 0);
+	glutTimerFunc(g_fpsTarget / 1000 /* ms */, TickTimer, 0);
 	glutTimerFunc(1000, PrintData, 0);
 	glutMainLoop();
 	Cleanup();

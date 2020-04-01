@@ -43,8 +43,6 @@
 #ifndef SUBPROJECTS_REDBOOK_ACCPERSP_H_
 #define SUBPROJECTS_REDBOOK_ACCPERSP_H_
 
-#define PI_ 3.14159265358979323846
-
 #include <GL/glut.h>
 
 /* accFrustum()

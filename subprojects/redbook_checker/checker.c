@@ -67,7 +67,6 @@ void makeCheckImage(GLubyte *_checkImage,
 		    int _checkImageWidth,
 		    int _checkImageHeight)
 {
-
    int i, j, c, offset;
 
    /* Original checker.c code:
