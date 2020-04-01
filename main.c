@@ -23,18 +23,11 @@
 #include "checker.h"
 #include "jitter.h"
 
-#include "glfont.h"
-
-
 #define PI_ 3.14159265358979323846
 #define    checkImageWidth 512
 #define    checkImageHeight 1024
 static GLubyte checkImage[checkImageHeight][checkImageWidth][4];
 static GLuint texName;
-
-GLFONT font;
-
-
 
 static const GLfloat yellow[4] = { 0.7, 0.7, 0.0, 1.0 };
 static const GLfloat greenish[4] = { 0.0, 0.7, 0.7, 1.0 };
@@ -70,8 +63,6 @@ struct State g_state;
 void cleanup( int sig )
 {
 	// insert cleanup code here (i.e. deleting structures or so)
-
-	glFontDestroy(&font);
 	exit( 0 );
 }
 
@@ -95,9 +86,6 @@ void init(void)
 	memcpy(g_spheres[1].color, greenish, sizeof(g_spheres[1].color));
 
 	memset(&g_state, 0, sizeof(g_state));
-
-	//Create font
-	glFontCreate(&font, "jramstet-glfont.glf", 0) || printf("\n\nERROR CREATING GLFONT\n");
 
 	glMaterialfv(GL_FRONT, GL_AMBIENT, mat_ambient);
 	glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
@@ -353,52 +341,16 @@ void displayObjects()
 // display 2d HUD (heads up display) text
 void displayText()
 {
-	char line1[32];
-	char line2[32];
-	char line3[32];
-	char line4[32];
+	int i, offset;
+	char line[4][32];
 
-	snprintf(sizeof(line1), &line1, "FPS: %lu", g_state.fps);
-	snprintf(sizeof(line2), &line2, "AA jitter: %lu", g_userSettings.enableAA);
-	snprintf(sizeof(line3), &line3, "Depth of field: %lu", g_userSettings.enableDOF);
-	snprintf(sizeof(line4), &line4, "Blur: %lu%s", g_userSettings.blur,
+	snprintf(&line[0][0], sizeof(line[0]), "FPS: %u", g_state.fps);
+	snprintf(&line[1][0], sizeof(line[0]), "AA jitter: %u", g_userSettings.enableAA);
+	snprintf(&line[2][0], sizeof(line[0]), "Depth of field: %u", g_userSettings.enableDOF);
+	snprintf(&line[3][0], sizeof(line[0]), "Blur: %u%s", g_userSettings.blur,
 			(g_userSettings.blur && !g_userSettings.enableAA &&
 					!g_userSettings.enableDOF) ? " (AA&DoF off)" : ""
 			);
-
-	// necessary for using glFont package
-	//	glfont is being used for 2d text in the hud
-	glEnable(GL_TEXTURE_2D);
-	glEnable(GL_BLEND);
-
-	// Set a temporary  & simple 2d projection matrix
-	//   normal projection will be replaced at the end of all this 
-	glMatrixMode(GL_PROJECTION);
-	glPushMatrix();
-	glLoadIdentity();
-	glOrtho(0, 640, 0, 480, -1, 1); // simple projection
-
-
-	// back to model mode to render the text
-	glMatrixMode(GL_MODELVIEW);
-	glPushMatrix();
-	glLoadIdentity();
-	glFontBegin(&font);
-	glScalef(8.0, 8.0, 8.0);
-	glTranslatef(15,15, 0);
-	glFontTextOut(line1, 1, 60 , 0);
-	glFontTextOut(line2, 1, 57 , 0);
-	glFontTextOut(line3, 1, 54 , 0);
-	glFontTextOut(line4, 1, 51 , 0);
-	glFontEnd();
-	glPopMatrix();
-
-	glMatrixMode(GL_PROJECTION);
-	glPopMatrix();
-
-	glDisable(GL_TEXTURE_2D);
-	glDisable(GL_BLEND);
-
 }
 
 
@@ -552,7 +504,7 @@ void display(void)
 
 
 	// display the HUD
-	displayText();
+	//displayText();
 
 	// force openGL flush
 	glFlush();
@@ -560,7 +512,7 @@ void display(void)
 	updateFps();
 
 	glutSwapBuffers();
-} // end HUGE display() function
+}
 
 
 
