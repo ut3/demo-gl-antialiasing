@@ -50,6 +50,7 @@ struct UserSettings
   GLuint enableDOF; /* 0 if disabled, 1-250 otherwise */
   GLuint blur; /* 1 if motion blur is enabled */
   GLuint debug; /* 1 if enabled */
+  GLfloat fovAngle;
 };
 
 struct Sphere
@@ -83,7 +84,7 @@ struct Sphere g_spheres[2];
 struct State g_state;
 struct CheckerboardFloor g_floor;
 
-static unsigned int RandomInt1to10()
+static unsigned int RandomInt1to20()
 {
 	static int didSrand = 0;
 	if (didSrand)
@@ -103,7 +104,7 @@ static unsigned int RandomInt1to10()
 	if (0 == bytes)
 		goto srand;
 
-	return (random + 1) % 10;
+	goto out;
 
 srand:
 	if (!didSrand)
@@ -113,20 +114,29 @@ srand:
 		didSrand = 1;
 	}
 
-	return (rand() + 1) % 10;
+	random = rand();
+out:
+
+	return (random % 20) + 1;
 }
 
-
-static void InitSpheres()
+static void ResetData()
 {
-	memset(&g_spheres, 0, sizeof(g_spheres));
+	/* User settings */
+	memset(&g_userSettings, 0, sizeof(g_userSettings));
+	g_userSettings.fovAngle = 50.0;
 
+	/* Program state */
+	memset(&g_state, 0, sizeof(g_state));
+
+	/* Spheres */
+	memset(&g_spheres, 0, sizeof(g_spheres));
 	for (int i = 0; i < sizeof(g_spheres) / sizeof(g_spheres[0]); ++i)
 	{
 		struct Sphere* sphere = &g_spheres[i];
 		sphere->glName = i + 1;
 		sphere->colorIdx = i % ( sizeof(g_colors) / sizeof(g_colors[0]) );
-		sphere->zSpeed = (float) RandomInt1to10() / 20;
+		sphere->zSpeed = (float) RandomInt1to20() / 40.0f;
 
 		printf("Set sphere %d to color %s (idx: %d) and speed %f\n",
 				sphere->glName, g_colorNames[sphere->colorIdx],
@@ -135,23 +145,18 @@ static void InitSpheres()
 	}
 }
 
-
 static void InitData()
 {
-	memset(&g_userSettings, 0, sizeof(g_userSettings));
-	memset(&g_state, 0, sizeof(g_state));
-	InitSpheres();
+	ResetData();
 
 	memset(&g_floor, 0, sizeof(g_floor));
 	g_floor.width = 512;
 	g_floor.height = 1024;
-
 	int size = sizeof(GLubyte) * 4 * g_floor.width * g_floor.height;
 	g_floor.image = malloc(size);
 	memset(g_floor.image, 0, size);
 	makeCheckImage(g_floor.image, g_floor.width, g_floor.height);
 }
-
 
 static void InitGL()
 {
@@ -192,7 +197,7 @@ static void InitGL()
 }
 
 
-static void cleanup()
+static void Cleanup()
 {
 	if (g_floor.image)
 	{
@@ -202,7 +207,7 @@ static void cleanup()
 }
 
 
-void currentInfo()
+static void PrintData()
 {
 	if (g_userSettings.debug)
 	{
@@ -211,16 +216,17 @@ void currentInfo()
 		printf("FPS: %u\n", g_state.fps);
 		printf("AA jitter: %u\n", g_userSettings.enableAA);
 		printf("Depth of field: %u\n", g_userSettings.enableDOF);
+		printf ("FoV angle: %f\n", g_userSettings.fovAngle);
 		printf("Motion blur: %u%s\n", g_userSettings.blur,
 				(g_userSettings.blur && !g_userSettings.enableAA &&
 						!g_userSettings.enableDOF) ? " (AA&DoF off)" : ""
 				);
 	}
-	glutTimerFunc(1000, currentInfo, 0);
+	glutTimerFunc(1000, PrintData, 0);
 }
 
 
-void updateFps()
+static void UpdateFps()
 {
 	if (!g_userSettings.debug)
 		return;
@@ -236,7 +242,7 @@ void updateFps()
 }
 
 
-void SphereRotationAndZ(struct Sphere* sphere)
+static void SphereRotationAndZ(struct Sphere* sphere)
 {
 	GLfloat step = sphere->zSpeed;
 	if (sphere->hit &&
@@ -251,7 +257,7 @@ void SphereRotationAndZ(struct Sphere* sphere)
 	sphere->zDistance -= step;
 	sphere->rotation = (g_spheres[0].zDistance / (2 * PI_) ) * 360;
 
-	if(sphere->zDistance < -48)
+	if(sphere->zDistance < -48.0)
 	{
 		sphere->zDistance = 0.0;
 		sphere->rotation = 0;
@@ -265,7 +271,7 @@ Z distances for selected balls are handled in display()
 such distances are dependant on the frame rate rather than
 the elapsed time
 */
-void timer25ms(int x) /* 1000 / 25ms = ~40fps */
+void Timer25ms(int x) /* 1000 / 25ms = ~40fps */
 {
 	for (int i = 0; i < sizeof(g_spheres) / sizeof(g_spheres[0]); ++i)
 	{
@@ -273,7 +279,7 @@ void timer25ms(int x) /* 1000 / 25ms = ~40fps */
 	}
 
 	glutPostRedisplay();
-	glutTimerFunc(25, timer25ms, 0);
+	glutTimerFunc(25, Timer25ms, 0);
 }
 
 void RenderSphere(struct Sphere* sphere, GLfloat x_translate)
@@ -357,10 +363,11 @@ void RenderSphere(struct Sphere* sphere, GLfloat x_translate)
 	glPopMatrix();
 }
 
-void displayObjects()
+static void DisplayObjects()
 {
 	glTranslatef (0.0, 0.0, -5.0);
 	glMatrixMode(GL_MODELVIEW);
+	glInitNames();
 
 	RenderSphere(&g_spheres[0], -2.0);
 	RenderSphere(&g_spheres[1], 2.0);
@@ -382,13 +389,32 @@ void displayObjects()
 }
 
 
-
-void display()
+static void GlutDisplayVanilla(GLint *viewport)
 {
-	unsigned char jitter;
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	accPerspective (g_userSettings.fovAngle,
+			(GLdouble) viewport[2]/(GLdouble) viewport[3],
+			1.0, 100.0, 0.0, 0.0, 0.0, 0.0, 1.0);
+	DisplayObjects();
+}
+
+
+static void GlutDisplay()
+{
 	GLint viewport[4];
-	jitter_point* jitAry;
 	glGetIntegerv (GL_VIEWPORT, viewport);
+
+	if (0 == g_userSettings.enableAA &&
+		0 == g_userSettings.enableDOF &&
+		0 == g_userSettings.blur)
+	{
+		GlutDisplayVanilla(viewport);
+		goto finish;
+	}
+
+
+	unsigned char jitter;
+	jitter_point* jitAry;
 
 	++g_state.framesElapsed;
 
@@ -399,6 +425,9 @@ void display()
 	{
 		switch(g_userSettings.enableAA)
 		{
+			case 0:
+				jitAry = 0;
+				break;
 			case 2:
 				jitAry = j2;
 				break;
@@ -418,6 +447,7 @@ void display()
 				jitAry = j66;
 				break;
 
+
 			default:
 				printf("Undefined value of EnableAA! %i\n\n", g_userSettings.enableAA);
 				break;
@@ -433,7 +463,7 @@ void display()
 				//both AA and DOF are enabled
 				//   DoF jitter count and AA jitter count are the same
 			{
-				accPerspective (50.0,
+				accPerspective (g_userSettings.fovAngle,
 						(GLdouble) viewport[2]/(GLdouble) viewport[3],
 						1.0, 100.0, jitAry[jitter].x, jitAry[jitter].y, 0.33*jitAry[jitter].x, 0.33*jitAry[jitter].y, g_userSettings.enableDOF+5);
 
@@ -441,7 +471,7 @@ void display()
 			else
 				// only AA is enabled
 			{
-				accPerspective (50.0,
+				accPerspective (g_userSettings.fovAngle,
 						(GLdouble) viewport[2]/(GLdouble) viewport[3],
 						1.0, 100.0, j8[jitter].x, j8[jitter].y, 0.0, 0.0, 1.0);
 
@@ -449,7 +479,7 @@ void display()
 
 
 			// render scene (but not HUD)
-			displayObjects ();
+			DisplayObjects ();
 
 			// set the ACCUM buffer
 			glAccum(GL_ACCUM, 1.0/g_userSettings.enableAA);
@@ -468,11 +498,11 @@ void display()
 
 		{
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-			accPerspective (50.0,
+			accPerspective (g_userSettings.fovAngle,
 					(GLdouble) viewport[2]/(GLdouble) viewport[3],
 					1.0, 100.0, 0.0, 0.0,
 					0.33*j8[jitter].x, 0.33*j8[jitter].y, g_userSettings.enableDOF+5);
-			displayObjects();
+			DisplayObjects();
 			glAccum(GL_ACCUM, 1.0/8);
 
 		}
@@ -486,31 +516,31 @@ void display()
 		// neither AA nor DOF is currently enabled
 	{
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		accPerspective (50.0,
+		accPerspective (g_userSettings.fovAngle,
 				(GLdouble) viewport[2]/(GLdouble) viewport[3],
 				1.0, 100.0, 0.0, 0.0, 0.0, 0.0, 1.0);
-		displayObjects();
+		DisplayObjects();
 	}
 
-	updateFps();
+finish:
 	glFlush();
-
+	UpdateFps();
 	glutSwapBuffers();
 }
 
 
-void reshape(int w, int h)
+static void Reshape(int w, int h)
 {
 	glViewport(0, 0, (GLsizei) w, (GLsizei) h);
 }
 
 
-void keyboard(unsigned char key, int x, int y)
+static void Keyboard(unsigned char key, int x, int y)
 {
 	switch (key)
 	{
 		case 27:
-			cleanup();
+			Cleanup();
 			exit(0);
 			break;
 
@@ -530,6 +560,19 @@ void keyboard(unsigned char key, int x, int y)
 			g_userSettings.enableAA = 0;
 			break;
 
+		case '}':
+		case ']':
+			g_userSettings.fovAngle += 2.0;
+			if (g_userSettings.fovAngle > 100.0)
+				g_userSettings.fovAngle = 100.0;
+			break;
+
+		case '{':
+		case '[':
+			g_userSettings.fovAngle -= 2.0;
+			if (g_userSettings.fovAngle < 10.0)
+				g_userSettings.fovAngle = 10.0;
+			break;
 		case '1':
 		case '2':
 		case '3':
@@ -548,9 +591,7 @@ void keyboard(unsigned char key, int x, int y)
 
 		case 'r':
 		case 'R':
-			memset(&g_userSettings, 0, sizeof(g_userSettings));
-			memset(&g_spheres, 0, sizeof(g_spheres));
-			memset(&g_state, 0, sizeof(g_state));
+			ResetData();
 			break;
 
 		case 'd':
@@ -572,7 +613,8 @@ void keyboard(unsigned char key, int x, int y)
 	glutPostRedisplay();
 }
 
-void mouse(int button, int state, int x, int y)
+
+static void Mouse(int button, int state, int x, int y)
 {
 	if (button != GLUT_LEFT_BUTTON || state != GLUT_DOWN)
 		return;
@@ -589,12 +631,11 @@ void mouse(int button, int state, int x, int y)
 	glLoadIdentity();
 	gluPickMatrix((GLdouble) x, (GLdouble) (viewport[3] - y),
 			5.0, 5.0, viewport);
-	gluPerspective(50.0,
+	gluPerspective(g_userSettings.fovAngle,
 			(GLdouble) viewport[2]/(GLdouble) viewport[3],
 			1.0, 100.0);
-	glInitNames();
 
-	displayObjects();
+	DisplayObjects();
 
 	GLint hits = glRenderMode(GL_RENDER);
 	if (hits > 0)
@@ -627,13 +668,13 @@ int main(int argc, char** argv)
 	glutCreateWindow (argv[0]);
 	InitData();
 	InitGL();
-	glutReshapeFunc(reshape);
-	glutDisplayFunc(display);
-	glutKeyboardFunc(keyboard);
-	glutMouseFunc(mouse);
-	glutTimerFunc(25, timer25ms, 0);
-	glutTimerFunc(1000, currentInfo, 0);
+	glutReshapeFunc(Reshape);
+	glutDisplayFunc(GlutDisplay);
+	glutKeyboardFunc(Keyboard);
+	glutMouseFunc(Mouse);
+	glutTimerFunc(25, Timer25ms, 0);
+	glutTimerFunc(1000, PrintData, 0);
 	glutMainLoop();
-	cleanup();
+	Cleanup();
 	return 0;
 }
