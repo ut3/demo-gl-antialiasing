@@ -33,7 +33,6 @@ static GLubyte checkImage[checkImageHeight][checkImageWidth][4];
 static GLuint texName;
 
 static GLfloat xRotSphere2;
-static GLfloat sphereZdistance;
 static GLfloat sphereZdistance2;
 
 static GLuint sphereHits[2];
@@ -103,7 +102,6 @@ void init(void)
 	memset(&g_state, 0, sizeof(g_state));
 	g_state.fps = 9999;
 
-	sphereZdistance = 0;
 	sphereZdistance2 = 0;
 	xRotSphere2 = 0;
 
@@ -173,15 +171,15 @@ void timer50ms(int x)
 	/* calculate sphere 1 z distance and rotation when it is not currently selected */
 	if (!sphereHits[0])
 	{
-		sphereZdistance = sphereZdistance - 0.1;
+		g_spheres[0].zDistance -= 0.1;
 
-		if(sphereZdistance < -48)
+		if(g_spheres[0].zDistance < -48)
 		{
-			sphereZdistance = 0.0;
+			g_spheres[0].zDistance = 0.0;
 			g_spheres[0].rotation = 0;
 		}
 		else {
-			g_spheres[0].rotation = (sphereZdistance / (2 * PI_) ) * 360;
+			g_spheres[0].rotation = (g_spheres[0].zDistance / (2 * PI_) ) * 360;
 		}
 
 	}
@@ -190,16 +188,16 @@ void timer50ms(int x)
 	//  - blurring enabled, but AA off
 	else if ( (!g_userSettings.blur) || (g_userSettings.blur && !g_userSettings.enableAA) )
 	{
-		sphereZdistance = sphereZdistance - 3;
+		g_spheres[0].zDistance -= 3;
 
-		if(sphereZdistance < -48)
+		if(g_spheres[0].zDistance < -48)
 		{
-			sphereZdistance = 0.0;
+			g_spheres[0].zDistance = 0.0;
 			g_spheres[0].rotation = 0;
 		}
 		else
 		{
-			g_spheres[0].rotation = (sphereZdistance / (2 * PI_) ) * 360;
+			g_spheres[0].rotation = (g_spheres[0].zDistance / (2 * PI_) ) * 360;
 		}
 	}
 
@@ -260,16 +258,14 @@ void leftSphereRender()
 
 
 				if (g_userSettings.enableAA == 2)
-					sphereZdistance = sphereZdistance - 2;
-
+					g_spheres[0].zDistance -= 2;
 				else if (g_userSettings.enableAA == 4)
-					sphereZdistance--;
-
+					--g_spheres[0].zDistance;
 				else 
 				{
 					if (blurTicks[0] >= ceil(g_userSettings.enableAA/4))
 					{
-						sphereZdistance--;
+						--g_spheres[0].zDistance;
 						blurTicks[0] = 0;
 					}	
 				}
@@ -281,7 +277,7 @@ void leftSphereRender()
 				blurTicks[0]++;
 				if (blurTicks[0] >= 3)
 				{
-					sphereZdistance--;
+					--g_spheres[0].zDistance;
 					blurTicks[0]=0;
 				}
 			}
@@ -292,13 +288,13 @@ void leftSphereRender()
 		} //end if blurring
 
 		// if at end of plane
-		if(sphereZdistance < -48)
+		if(g_spheres[0].zDistance < -48)
 		{
-			sphereZdistance = 0.0;
+			g_spheres[0].zDistance = 0.0;
 			g_spheres[0].rotation = 0.0;
 		}
 		else {
-			g_spheres[0].rotation = (sphereZdistance / (2 * PI_) ) * 360;
+			g_spheres[0].rotation = (g_spheres[0].zDistance / (2 * PI_) ) * 360;
 		}
 
 		// set material properties for color red
@@ -319,7 +315,7 @@ void leftSphereRender()
 		glMaterialfv(GL_FRONT, GL_DIFFUSE, yellow );
 
 	}
-	glTranslatef (-2.0, -1.0, sphereZdistance);
+	glTranslatef (-2.0, -1.0, g_spheres[0].zDistance);
 	glRotatef (g_spheres[0].rotation, 1.0, 0.0, 0.0);
 	glRotatef (90.0, 0.0, 1.0, 0.0);
 	glutSolidSphere (1.0, 24, 24);
@@ -764,8 +760,6 @@ void keyboard(unsigned char key, int x, int y)
 
 		case 'r':
 		case 'R':
-			g_userSettings.enableDOF=0;
-			sphereZdistance = 0;
 			sphereZdistance2 =0;
 			sphereHits[0] = 0;
 			sphereHits[1] = 0;
