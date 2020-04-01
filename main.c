@@ -33,9 +33,8 @@ static const char* g_colorNames[] = {
 		"Yellow", "GreenBlue", "Green", "Blue"
 };
 
-static const GLfloat red[4] = { 0.7, 0.0, 0.0, 1.0 };
-
-
+/* the color of warp 9 */
+static const GLfloat g_red[4] = { 0.7, 0.0, 0.0, 1.0 };
 
 struct UserSettings
 {
@@ -286,7 +285,7 @@ void RenderSphere(struct Sphere* sphere, GLfloat x_translate)
 		}
 
 		// set material properties for color red
-		glMaterialfv(GL_FRONT, GL_DIFFUSE, red );
+		glMaterialfv(GL_FRONT, GL_DIFFUSE, g_red );
 
 		// disable the sphere click after 500 ms
 		if (  (glutGet(GLUT_ELAPSED_TIME) - sphere->hit ) > 500)
