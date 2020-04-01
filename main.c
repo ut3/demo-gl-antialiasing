@@ -53,7 +53,7 @@ struct Sphere {
   GLuint blurTicks;
   GLfloat zDistance;
   GLfloat rotation;
-  GLfloat color;
+  GLfloat color[4];
 };
 
 struct State {
@@ -91,9 +91,10 @@ void init(void)
 
 	memset(&g_userSettings, 0, sizeof(g_userSettings));
 	memset(&g_spheres, 0, sizeof(g_spheres));
+	memcpy(g_spheres[0].color, yellow, sizeof(g_spheres[0].color));
+	memcpy(g_spheres[1].color, greenish, sizeof(g_spheres[1].color));
 
 	memset(&g_state, 0, sizeof(g_state));
-	g_state.fps = 999;
 
 	//Create font
 	glFontCreate(&font, "jramstet-glfont.glf", 0) || printf("\n\nERROR CREATING GLFONT\n");
@@ -226,41 +227,40 @@ the elapsed time
 	glutTimerFunc(50, timer50ms, 0);
 }
 
-// Draw left sphere
-void leftSphereRender()
+void RenderSphere(struct Sphere* sphere, GLfloat x_translate)
 {
 	// if selected, handle the distance (e.g. motion blurring)
-	if (g_spheres[0].hit)
+	if (sphere->hit)
 	{
 		if (g_userSettings.blur)
 		{
 			if (g_userSettings.enableAA)
 			{
-				g_spheres[0].blurTicks++;
+				sphere->blurTicks++;
 
 
 				if (g_userSettings.enableAA == 2)
-					g_spheres[0].zDistance -= 2;
+					sphere->zDistance -= 2;
 				else if (g_userSettings.enableAA == 4)
-					--g_spheres[0].zDistance;
-				else 
+					--sphere->zDistance;
+				else
 				{
-					if (g_spheres[0].blurTicks >= ceil(g_userSettings.enableAA/4))
+					if (sphere->blurTicks >= ceil(g_userSettings.enableAA/4))
 					{
-						--g_spheres[0].zDistance;
-						g_spheres[0].blurTicks = 0;
-					}	
+						--sphere->zDistance;
+						sphere->blurTicks = 0;
+					}
 				}
 
 			}
 			else if (g_userSettings.enableDOF)
 				//assumed jitter is 8
 			{
-				g_spheres[0].blurTicks++;
-				if (g_spheres[0].blurTicks >= 3)
+				sphere->blurTicks++;
+				if (sphere->blurTicks >= 3)
 				{
-					--g_spheres[0].zDistance;
-					g_spheres[0].blurTicks=0;
+					--sphere->zDistance;
+					sphere->blurTicks=0;
 				}
 			}
 			// else
@@ -270,123 +270,38 @@ void leftSphereRender()
 		} //end if blurring
 
 		// if at end of plane
-		if(g_spheres[0].zDistance < -48)
+		if(sphere->zDistance < -48)
 		{
-			g_spheres[0].zDistance = 0.0;
-			g_spheres[0].rotation = 0.0;
+			sphere->zDistance = 0.0;
+			sphere->rotation = 0.0;
 		}
 		else {
-			g_spheres[0].rotation = (g_spheres[0].zDistance / (2 * PI_) ) * 360;
+			sphere->rotation = (sphere->zDistance / (2 * PI_) ) * 360;
 		}
 
 		// set material properties for color red
 		glMaterialfv(GL_FRONT, GL_DIFFUSE, red );
 
 		// disable the sphere click after 500 ms
-		if (  (glutGet(GLUT_ELAPSED_TIME) - g_spheres[0].hit ) > 500)
+		if (  (glutGet(GLUT_ELAPSED_TIME) - sphere->hit ) > 500)
 		{
-			g_spheres[0].hit = 0;
+			sphere->hit = 0;
 
 			// reset bluring ticks for this sphere
-			g_spheres[0].blurTicks = 0;
+			sphere->blurTicks = 0;
 		}
 	}
 	else
 	{
 		// normal sphere properties
-		glMaterialfv(GL_FRONT, GL_DIFFUSE, yellow );
+		glMaterialfv(GL_FRONT, GL_DIFFUSE, sphere->color );
 
 	}
-	glTranslatef (-2.0, -1.0, g_spheres[0].zDistance);
-	glRotatef (g_spheres[0].rotation, 1.0, 0.0, 0.0);
+	glTranslatef (x_translate, -1.0, sphere->zDistance);
+	glRotatef (sphere->rotation, 1.0, 0.0, 0.0);
 	glRotatef (90.0, 0.0, 1.0, 0.0);
 	glutSolidSphere (1.0, 24, 24);
 }
-
-
-// draw right sphere
-void rightSphereRender()
-{
-	// if selected, handle the distance (e.g. motion blurring)
-	if (g_spheres[1].hit)
-	{
-
-		if (g_userSettings.blur)
-		{
-			if (g_userSettings.enableAA)
-
-				// BLURRING AND AA ENABLED
-			{
-				g_spheres[1].blurTicks++;
-
-
-				if (g_userSettings.enableAA == 2)
-					g_spheres[1].zDistance = g_spheres[1].zDistance - 2;
-
-				else if (g_userSettings.enableAA == 4)
-					g_spheres[1].zDistance--;
-
-				else 
-				{
-					if (g_spheres[1].blurTicks >= ceil(g_userSettings.enableAA/4))
-					{
-						g_spheres[1].zDistance--;
-						g_spheres[1].blurTicks = 0;
-					}	
-				}
-
-			}
-			else if (g_userSettings.enableDOF)
-
-				// BLURRING AND DOF ENABLED
-
-			{
-				g_spheres[1].blurTicks++;
-				if (g_spheres[1].blurTicks >= 3)
-				{
-					g_spheres[1].zDistance--;
-					g_spheres[1].blurTicks=0;
-				}
-			}
-			// else
-			// BLURRING W/O DOF OR AA... DOES NOTHING
-			// handled by 50ms timer
-		} // end if blurring
-
-
-		// if at end of plane
-		if(g_spheres[1].zDistance < -48)
-		{
-			g_spheres[1].zDistance = 0.0;
-			g_spheres[1].rotation = 0;
-		}
-		else
-			g_spheres[1].rotation = (g_spheres[1].zDistance / (2 * PI_) ) * 360;
-
-		// set material properties for color red
-		glMaterialfv(GL_FRONT, GL_DIFFUSE, red );
-
-		// disable the sphere click after 500 ms
-		if (  (glutGet(GLUT_ELAPSED_TIME) - g_spheres[1].hit ) > 500)
-		{
-			g_spheres[1].hit = 0;
-
-			// reset bluring ticks for this sphere
-			g_spheres[1].blurTicks = 0;
-		}
-	}
-	else
-	{
-		// normal sphere properties
-		glMaterialfv(GL_FRONT, GL_DIFFUSE, greenish );
-
-	}
-	glTranslatef (2.0, -1.0, g_spheres[1].zDistance);
-	glRotatef (g_spheres[1].rotation, 1.0, 0.0, 0.0);
-	glRotatef (90.0, 0.0, 1.0, 0.0);
-	glutSolidSphere (1.0, 24, 24);
-}
-
 
 void displayObjects()
 
@@ -397,7 +312,7 @@ void displayObjects()
 	// BEGIN LEFT SPHERE
 	glPushMatrix();
 	glPushName(1); 
-	leftSphereRender();
+	RenderSphere(&g_spheres[0], -2.0);
 	glPopName();
 	glPopMatrix();
 	// END LEFT SPHERE
@@ -406,7 +321,7 @@ void displayObjects()
 	// BEGIN RIGHT SPHERE
 	glPushMatrix();
 	glPushName(2);
-	rightSphereRender();
+	RenderSphere(&g_spheres[1], 2.0);
 	glPopName();
 	glPopMatrix();
 	// END RIGHT SPHERE
