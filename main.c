@@ -23,9 +23,19 @@
 #include "checker.h"
 #include "jitter.h"
 
-static const GLfloat yellow[4] = { 0.7, 0.7, 0.0, 1.0 };
-static const GLfloat greenish[4] = { 0.0, 0.7, 0.7, 1.0 };
+static const GLfloat g_colors[][4] = {
+		{ 0.7, 0.7, 0.0, 1.0 },
+		{ 0.0, 0.7, 0.7, 1.0 },
+		{ 0.0, 0.7, 0.0, 1.0 },
+		{ 0.0, 0.0, 0.7, 1.0 }
+};
+static const char* g_colorNames[] = {
+		"Yellow", "GreenBlue", "Green", "Blue"
+};
+
 static const GLfloat red[4] = { 0.7, 0.0, 0.0, 1.0 };
+
+
 
 struct UserSettings
 {
@@ -41,7 +51,7 @@ struct Sphere
   GLuint blurTicks;
   GLfloat zDistance;
   GLfloat rotation;
-  GLfloat color[4];
+  GLint colorIdx;
   GLint glName;
 };
 
@@ -65,17 +75,28 @@ struct Sphere g_spheres[2];
 struct State g_state;
 struct CheckerboardFloor g_floor;
 
-static void initData()
+static void InitSpheres()
+{
+	memset(&g_spheres, 0, sizeof(g_spheres));
+
+	for (int i = 0; i < sizeof(g_spheres) / sizeof(g_spheres[0]); ++i)
+	{
+		struct Sphere* sphere = &g_spheres[i];
+		sphere->glName = i + 1;
+		sphere->colorIdx = i % ( sizeof(g_colors) / sizeof(g_colors[0]) );
+
+		printf("Set sphere %d to color %s (idx: %d)\n",
+				sphere->glName, g_colorNames[sphere->colorIdx],
+				sphere->colorIdx);
+	}
+}
+
+
+static void InitData()
 {
 	memset(&g_userSettings, 0, sizeof(g_userSettings));
-
 	memset(&g_state, 0, sizeof(g_state));
-
-	memset(&g_spheres, 0, sizeof(g_spheres));
-	memcpy(g_spheres[0].color, yellow, sizeof(g_spheres[0].color));
-	memcpy(g_spheres[1].color, greenish, sizeof(g_spheres[1].color));
-	g_spheres[0].glName = 1;
-	g_spheres[1].glName = 2;
+	InitSpheres();
 
 	memset(&g_floor, 0, sizeof(g_floor));
 	g_floor.width = 512;
@@ -88,7 +109,7 @@ static void initData()
 }
 
 
-static void initGL()
+static void InitGL()
 {
 	GLfloat mat_ambient[] = { 1.0, 1.0, 1.0, 1.0 };
 	glMaterialfv(GL_FRONT, GL_AMBIENT, mat_ambient);
@@ -155,84 +176,59 @@ void currentInfo()
 }
 
 
-// gets called every 50ms
-void timer50ms(int x)
+void updateFps()
 {
+	if (!g_userSettings.debug)
+		return;
 
-	/* calculate sphere 1 z distance and rotation when it is not currently selected */
-	if (!g_spheres[0].hit)
+	GLuint fpsTimeCurrent = glutGet(GLUT_ELAPSED_TIME);
+	if (fpsTimeCurrent - g_state.baseTime > 1000)
 	{
-		g_spheres[0].zDistance -= 0.1;
-
-		if(g_spheres[0].zDistance < -48)
-		{
-			g_spheres[0].zDistance = 0.0;
-			g_spheres[0].rotation = 0;
-		}
-		else {
-			g_spheres[0].rotation = (g_spheres[0].zDistance / (2 * PI_) ) * 360;
-		}
-
+		g_state.fps = ceil( g_state.framesElapsed*1000.0 /
+						 (fpsTimeCurrent-g_state.baseTime) );
+		g_state.baseTime = fpsTimeCurrent;
+		g_state.framesElapsed = 0;
 	}
-	// if sphere1 is selected, but either 
-	//  - blurring disabled
-	//  - blurring enabled, but AA off
-	else if ( (!g_userSettings.blur) || (g_userSettings.blur && !g_userSettings.enableAA) )
-	{
-		g_spheres[0].zDistance -= 3;
+}
 
-		if(g_spheres[0].zDistance < -48)
-		{
-			g_spheres[0].zDistance = 0.0;
-			g_spheres[0].rotation = 0;
-		}
-		else
-		{
-			g_spheres[0].rotation = (g_spheres[0].zDistance / (2 * PI_) ) * 360;
-		}
+
+void SphereRotationAndZ(struct Sphere* sphere)
+{
+	GLfloat step = 0.1;
+	if (sphere->hit &&
+	    (!g_userSettings.blur ||
+		 (!g_userSettings.enableAA && !g_userSettings.enableDOF)))
+	{
+		step = 1.5;
 	}
 
+	sphere->zDistance -= step;
+	sphere->rotation = (g_spheres[0].zDistance / (2 * PI_) ) * 360;
 
-	/* calculate sphere 2 z distance and rotation when it is not currently selected */
-	if (!g_spheres[1].hit)
+	if(sphere->zDistance < -48)
 	{
-		g_spheres[1].zDistance = g_spheres[1].zDistance - 0.4;
-		if(g_spheres[1].zDistance < -50)
-		{
-			g_spheres[1].zDistance = 0.0;
-			g_spheres[1].rotation = 0;
-		}
-		else
-			g_spheres[1].rotation = (g_spheres[1].zDistance / (2 * PI_) ) * 360;
+		sphere->zDistance = 0.0;
+		sphere->rotation = 0;
 	}
-	// if sphere2 is selected, but either 
-	//  - blurring disabled
-	//  - blurring enabled, but AA off
-	else if ( (!g_userSettings.blur) || (g_userSettings.blur && !g_userSettings.enableAA) )
-	{
-		g_spheres[1].zDistance = g_spheres[1].zDistance - 3;
-
-		if(g_spheres[1].zDistance < -48)
-		{
-			g_spheres[1].zDistance = 0.0;
-			g_spheres[1].rotation = 0;
-		}
-		else
-			g_spheres[1].rotation = (g_spheres[1].zDistance / (2 * PI_) ) * 360;
-	}
+}
 
 
-	/*
-NOTE: 
-Z distances for selected balls are handled in display() 
+/*
+NOTE:
+Z distances for selected balls are handled in display()
 such distances are dependant on the frame rate rather than
 the elapsed time
 */
+void timer25ms(int x) /* 1000 / 25ms = ~40fps */
+{
+	for (int i = 0; i < sizeof(g_spheres) / sizeof(g_spheres[0]); ++i)
+	{
+		SphereRotationAndZ(&g_spheres[i]);
+	}
 
-	/* redisplay what's changed */
 	glutPostRedisplay();
 
-	glutTimerFunc(50, timer50ms, 0);
+	glutTimerFunc(25, timer25ms, 0);
 }
 
 void RenderSphere(struct Sphere* sphere, GLfloat x_translate)
@@ -304,7 +300,7 @@ void RenderSphere(struct Sphere* sphere, GLfloat x_translate)
 	else
 	{
 		// normal sphere properties
-		glMaterialfv(GL_FRONT, GL_DIFFUSE, sphere->color);
+		glMaterialfv(GL_FRONT, GL_DIFFUSE, g_colors[sphere->colorIdx]);
 
 	}
 	glTranslatef (x_translate, -1.0, sphere->zDistance);
@@ -318,6 +314,7 @@ void RenderSphere(struct Sphere* sphere, GLfloat x_translate)
 
 void displayObjects()
 {
+	glTranslatef (0.0, 0.0, -5.0);
 	glMatrixMode(GL_MODELVIEW);
 
 	RenderSphere(&g_spheres[0], -2.0);
@@ -337,41 +334,8 @@ void displayObjects()
 	glDisable(GL_TEXTURE_2D);
 	glPopName();
 	glPopMatrix();
-
-	glutPostRedisplay();
 }
 
-
-
-
-// render the scene
-//   but not the HUD
-// used by display() and called for each GL_ACCUM jitter
-void displayHelper()
-{
-	//glPushMatrix ();
-	glTranslatef (0.0, 0.0, -5.0);
-	displayObjects();
-	//displayText(); // should be in display() near the end
-	glFlush();
-	//glPopMatrix ();
-}
-
-
-void updateFps()
-{
-	if (!g_userSettings.debug)
-		return;
-
-	GLuint fpsTimeCurrent = glutGet(GLUT_ELAPSED_TIME);
-	if (fpsTimeCurrent - g_state.baseTime > 1000)
-	{
-		g_state.fps = ceil( g_state.framesElapsed*1000.0 /
-						 (fpsTimeCurrent-g_state.baseTime) );
-		g_state.baseTime = fpsTimeCurrent;
-		g_state.framesElapsed = 0;
-	}
-}
 
 
 void display(void)
@@ -440,7 +404,7 @@ void display(void)
 
 
 			// render scene (but not HUD)
-			displayHelper (GL_RENDER);
+			displayObjects ();
 
 			// set the ACCUM buffer
 			glAccum(GL_ACCUM, 1.0/g_userSettings.enableAA);
@@ -463,7 +427,7 @@ void display(void)
 					(GLdouble) viewport[2]/(GLdouble) viewport[3],
 					1.0, 100.0, 0.0, 0.0,
 					0.33*j8[jitter].x, 0.33*j8[jitter].y, g_userSettings.enableDOF+5);
-			displayHelper (GL_RENDER);
+			displayObjects();
 			glAccum(GL_ACCUM, 1.0/8);
 
 		}
@@ -480,12 +444,12 @@ void display(void)
 		accPerspective (50.0,
 				(GLdouble) viewport[2]/(GLdouble) viewport[3],
 				1.0, 100.0, 0.0, 0.0, 0.0, 0.0, 1.0);
-		displayHelper (GL_RENDER);
-
+		displayObjects();
 	}
 
-	glFlush();
 	updateFps();
+	glFlush();
+
 	glutSwapBuffers();
 }
 
@@ -615,13 +579,13 @@ int main(int argc, char** argv)
 	glutInitWindowSize (1024, 1024);
 	glutInitWindowPosition (100, 100);
 	glutCreateWindow (argv[0]);
-	initData();
-	initGL();
+	InitData();
+	InitGL();
 	glutReshapeFunc(reshape);
 	glutDisplayFunc(display);
 	glutKeyboardFunc(keyboard);
 	glutMouseFunc(mouse);
-	glutTimerFunc(50, timer50ms, 0);
+	glutTimerFunc(25, timer25ms, 0);
 	glutTimerFunc(1000, currentInfo, 0);
 	glutMainLoop();
 	cleanup();
