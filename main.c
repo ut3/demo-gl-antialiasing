@@ -33,7 +33,6 @@ static GLubyte checkImage[checkImageHeight][checkImageWidth][4];
 static GLuint texName;
 
 static GLfloat xRotSphere2;
-static GLfloat sphereZdistance2;
 
 static GLuint sphereHits[2];
 static GLuint blurTicks[2];
@@ -102,7 +101,6 @@ void init(void)
 	memset(&g_state, 0, sizeof(g_state));
 	g_state.fps = 9999;
 
-	sphereZdistance2 = 0;
 	xRotSphere2 = 0;
 
 	sphereHits[0] = 0;
@@ -205,29 +203,29 @@ void timer50ms(int x)
 	/* calculate sphere 2 z distance and rotation when it is not currently selected */
 	if (!sphereHits[1])
 	{
-		sphereZdistance2 = sphereZdistance2 - 0.4;
-		if(sphereZdistance2 < -50)
+		g_spheres[1].zDistance = g_spheres[1].zDistance - 0.4;
+		if(g_spheres[1].zDistance < -50)
 		{
-			sphereZdistance2 = 0.0;
+			g_spheres[1].zDistance = 0.0;
 			xRotSphere2 = 0;
 		}
 		else
-			xRotSphere2 = (sphereZdistance2 / (2 * PI_) ) * 360;
+			xRotSphere2 = (g_spheres[1].zDistance / (2 * PI_) ) * 360;
 	}
 	// if sphere2 is selected, but either 
 	//  - blurring disabled
 	//  - blurring enabled, but AA off
 	else if ( (!g_userSettings.blur) || (g_userSettings.blur && !g_userSettings.enableAA) )
 	{
-		sphereZdistance2 = sphereZdistance2 - 3;
+		g_spheres[1].zDistance = g_spheres[1].zDistance - 3;
 
-		if(sphereZdistance2 < -48)
+		if(g_spheres[1].zDistance < -48)
 		{
-			sphereZdistance2 = 0.0;
+			g_spheres[1].zDistance = 0.0;
 			xRotSphere2 = 0;
 		}
 		else
-			xRotSphere2 = (sphereZdistance2 / (2 * PI_) ) * 360;
+			xRotSphere2 = (g_spheres[1].zDistance / (2 * PI_) ) * 360;
 	}
 
 
@@ -339,16 +337,16 @@ void rightSphereRender()
 
 
 				if (g_userSettings.enableAA == 2)
-					sphereZdistance2 = sphereZdistance2 - 2;
+					g_spheres[1].zDistance = g_spheres[1].zDistance - 2;
 
 				else if (g_userSettings.enableAA == 4)
-					sphereZdistance2--;
+					g_spheres[1].zDistance--;
 
 				else 
 				{
 					if (blurTicks[1] >= ceil(g_userSettings.enableAA/4))
 					{
-						sphereZdistance2--;
+						g_spheres[1].zDistance--;
 						blurTicks[1] = 0;
 					}	
 				}
@@ -362,7 +360,7 @@ void rightSphereRender()
 				blurTicks[1]++;
 				if (blurTicks[1] >= 3)
 				{
-					sphereZdistance2--;
+					g_spheres[1].zDistance--;
 					blurTicks[1]=0;
 				}
 			}
@@ -373,13 +371,13 @@ void rightSphereRender()
 
 
 		// if at end of plane
-		if(sphereZdistance2 < -48)
+		if(g_spheres[1].zDistance < -48)
 		{
-			sphereZdistance2 = 0.0;
+			g_spheres[1].zDistance = 0.0;
 			xRotSphere2 = 0;
 		}
 		else
-			xRotSphere2 = (sphereZdistance2 / (2 * PI_) ) * 360;
+			xRotSphere2 = (g_spheres[1].zDistance / (2 * PI_) ) * 360;
 
 		// set material properties for color red
 		glMaterialfv(GL_FRONT, GL_DIFFUSE, red );
@@ -399,7 +397,7 @@ void rightSphereRender()
 		glMaterialfv(GL_FRONT, GL_DIFFUSE, greenish );
 
 	}
-	glTranslatef (2.0, -1.0, sphereZdistance2);
+	glTranslatef (2.0, -1.0, g_spheres[1].zDistance);
 	glRotatef (xRotSphere2, 1.0, 0.0, 0.0);
 	glRotatef (90.0, 0.0, 1.0, 0.0);
 	glutSolidSphere (1.0, 24, 24);
@@ -760,7 +758,6 @@ void keyboard(unsigned char key, int x, int y)
 
 		case 'r':
 		case 'R':
-			sphereZdistance2 =0;
 			sphereHits[0] = 0;
 			sphereHits[1] = 0;
 			blurTicks[0] = 0;
