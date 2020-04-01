@@ -23,74 +23,84 @@
 #include "checker.h"
 #include "jitter.h"
 
-#define PI_ 3.14159265358979323846
-#define    checkImageWidth 512
-#define    checkImageHeight 1024
-static GLubyte checkImage[checkImageHeight][checkImageWidth][4];
-static GLuint texName;
-
 static const GLfloat yellow[4] = { 0.7, 0.7, 0.0, 1.0 };
 static const GLfloat greenish[4] = { 0.0, 0.7, 0.7, 1.0 };
 static const GLfloat red[4] = { 0.7, 0.0, 0.0, 1.0 };
 
-
-struct UserSettings {
+struct UserSettings
+{
   GLuint enableAA;
   GLuint enableDOF;
   GLuint blur;
   GLuint debug;
 };
 
-struct Sphere {
+struct Sphere
+{
   GLuint hit;
   GLuint blurTicks;
   GLfloat zDistance;
   GLfloat rotation;
   GLfloat color[4];
+  GLint glName;
 };
 
-struct State {
+struct State
+{
   GLuint fps;
   GLuint baseTime;
   GLuint framesElapsed;
 };
 
+struct CheckerboardFloor
+{
+	GLuint texName;
+	GLuint width;
+	GLuint height;
+	GLubyte *image;
+};
+
 struct UserSettings g_userSettings;
 struct Sphere g_spheres[2];
 struct State g_state;
+struct CheckerboardFloor g_floor;
 
-
-void cleanup( int sig )
+static void initData()
 {
-	// insert cleanup code here (i.e. deleting structures or so)
-	exit( 0 );
-}
-
-
-
-
-/*  Initialize lighting and other values.
-*/
-
-
-void init(void)
-{
-	GLfloat mat_ambient[] = { 1.0, 1.0, 1.0, 1.0 };
-	GLfloat mat_specular[] = { 1.0, 1.0, 1.0, 1.0 };
-	GLfloat light_position[] = { 0.0, 0.0, 10.0, 1.0 };
-	GLfloat lm_ambient[] = { 0.2, 0.2, 0.2, 1.0 };
-
 	memset(&g_userSettings, 0, sizeof(g_userSettings));
-	memset(&g_spheres, 0, sizeof(g_spheres));
-	memcpy(g_spheres[0].color, yellow, sizeof(g_spheres[0].color));
-	memcpy(g_spheres[1].color, greenish, sizeof(g_spheres[1].color));
 
 	memset(&g_state, 0, sizeof(g_state));
 
+	memset(&g_spheres, 0, sizeof(g_spheres));
+	memcpy(g_spheres[0].color, yellow, sizeof(g_spheres[0].color));
+	memcpy(g_spheres[1].color, greenish, sizeof(g_spheres[1].color));
+	g_spheres[0].glName = 1;
+	g_spheres[1].glName = 2;
+
+	memset(&g_floor, 0, sizeof(g_floor));
+	g_floor.width = 512;
+	g_floor.height = 1024;
+
+	int size = sizeof(GLubyte) * 4 * g_floor.width * g_floor.height;
+	g_floor.image = malloc(size);
+	memset(g_floor.image, 0, size);
+	makeCheckImage(g_floor.image, g_floor.width, g_floor.height);
+}
+
+
+static void initGL()
+{
+	GLfloat mat_ambient[] = { 1.0, 1.0, 1.0, 1.0 };
 	glMaterialfv(GL_FRONT, GL_AMBIENT, mat_ambient);
+
+	GLfloat mat_specular[] = { 1.0, 1.0, 1.0, 1.0 };
 	glMaterialfv(GL_FRONT, GL_SPECULAR, mat_specular);
 	glMaterialf(GL_FRONT, GL_SHININESS, 50.0);
+
+	GLfloat light_position[] = { 0.0, 0.0, 10.0, 1.0 };
 	glLightfv(GL_LIGHT0, GL_POSITION, light_position);
+
+	GLfloat lm_ambient[] = { 0.2, 0.2, 0.2, 1.0 };
 	glLightModelfv(GL_LIGHT_MODEL_AMBIENT, lm_ambient);
 
 	glEnable(GL_LIGHTING);
@@ -100,38 +110,48 @@ void init(void)
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glShadeModel (GL_FLAT);
 
-	// create checkerboard texture
-	makeCheckImage(&checkImage[0][0][0], checkImageWidth, checkImageHeight);
-
-	// set up the texture
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	glGenTextures(1, &texName);
-	glBindTexture(GL_TEXTURE_2D, texName);
+	glGenTextures(1, &g_floor.texName);
+	glBindTexture(GL_TEXTURE_2D, g_floor.texName);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, checkImageWidth, checkImageHeight,
-			0, GL_RGBA, GL_UNSIGNED_BYTE, checkImage);
-	glTexImage2D(GL_TEXTURE_2D, 0, 4, checkImageWidth, checkImageHeight,
-			0, GL_RGBA, GL_UNSIGNED_BYTE, checkImage);
-
-
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, g_floor.width, g_floor.height,
+			0, GL_RGBA, GL_UNSIGNED_BYTE, g_floor.image);
+	glTexImage2D(GL_TEXTURE_2D, 0, 4, g_floor.width, g_floor.height,
+			0, GL_RGBA, GL_UNSIGNED_BYTE, g_floor.image);
 
 	glClearColor(0.0, 0.0, 0.0, 1.0);
 	glClearAccum(0.0, 0.0, 0.0, 0.0);
 }
 
-// print debug info if debug is enabled
+
+static void cleanup()
+{
+	if (g_floor.image)
+	{
+		free(g_floor.image);
+		g_floor.image = 0;
+	}
+}
+
+
 void currentInfo()
 {
 	if (g_userSettings.debug)
 	{
-		printf("\n\ncurrent AA: %i", g_userSettings.enableAA);
-		printf("\ncurrent DOF: %i", g_userSettings.enableDOF);
-		printf("\ncurrent FPS: %i", g_state.fps);
-
+		printf("\n=====================\n");
+		printf("Time: %d\n", glutGet(GLUT_ELAPSED_TIME));
+		printf("FPS: %u\n", g_state.fps);
+		printf("AA jitter: %u\n", g_userSettings.enableAA);
+		printf("Depth of field: %u\n", g_userSettings.enableDOF);
+		printf("Motion blur: %u%s\n", g_userSettings.blur,
+				(g_userSettings.blur && !g_userSettings.enableAA &&
+						!g_userSettings.enableDOF) ? " (AA&DoF off)" : ""
+				);
 	}
+	glutTimerFunc(1000, currentInfo, 0);
 }
 
 
@@ -217,6 +237,9 @@ the elapsed time
 
 void RenderSphere(struct Sphere* sphere, GLfloat x_translate)
 {
+	glPushMatrix();
+	glPushName(sphere->glName); 
+
 	// if selected, handle the distance (e.g. motion blurring)
 	if (sphere->hit)
 	{
@@ -225,7 +248,6 @@ void RenderSphere(struct Sphere* sphere, GLfloat x_translate)
 			if (g_userSettings.enableAA)
 			{
 				sphere->blurTicks++;
-
 
 				if (g_userSettings.enableAA == 2)
 					sphere->zDistance -= 2;
@@ -264,7 +286,7 @@ void RenderSphere(struct Sphere* sphere, GLfloat x_translate)
 			sphere->rotation = 0.0;
 		}
 		else {
-			sphere->rotation = (sphere->zDistance / (2 * PI_) ) * 360;
+			sphere->rotation = (sphere->zDistance / (2 * M_PI) ) * 360;
 		}
 
 		// set material properties for color red
@@ -282,46 +304,30 @@ void RenderSphere(struct Sphere* sphere, GLfloat x_translate)
 	else
 	{
 		// normal sphere properties
-		glMaterialfv(GL_FRONT, GL_DIFFUSE, sphere->color );
+		glMaterialfv(GL_FRONT, GL_DIFFUSE, sphere->color);
 
 	}
 	glTranslatef (x_translate, -1.0, sphere->zDistance);
 	glRotatef (sphere->rotation, 1.0, 0.0, 0.0);
 	glRotatef (90.0, 0.0, 1.0, 0.0);
 	glutSolidSphere (1.0, 24, 24);
+
+	glPopName();
+	glPopMatrix();
 }
 
 void displayObjects()
-
 {
 	glMatrixMode(GL_MODELVIEW);
 
-
-	// BEGIN LEFT SPHERE
-	glPushMatrix();
-	glPushName(1); 
 	RenderSphere(&g_spheres[0], -2.0);
-	glPopName();
-	glPopMatrix();
-	// END LEFT SPHERE
-
-
-	// BEGIN RIGHT SPHERE
-	glPushMatrix();
-	glPushName(2);
 	RenderSphere(&g_spheres[1], 2.0);
-	glPopName();
-	glPopMatrix();
-	// END RIGHT SPHERE
 
-
-
-	// BEGIN CHECKERBOARD FLOOR
 	glPushMatrix ();
 	glPushName(3);
 	glEnable(GL_TEXTURE_2D);
 	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
-	glBindTexture(GL_TEXTURE_2D, texName);
+	glBindTexture(GL_TEXTURE_2D, g_floor.texName);
 	glBegin(GL_QUADS);
 	glTexCoord2f(0.0, 0.0); glVertex3f(-5.0, -2.0, -50.0);
 	glTexCoord2f(0.0, 1.0); glVertex3f(-5.0, -2.0, 1.0);
@@ -331,26 +337,8 @@ void displayObjects()
 	glDisable(GL_TEXTURE_2D);
 	glPopName();
 	glPopMatrix();
-	// END CHECKERBOARD FLOOR
 
-
-}
-
-
-
-// display 2d HUD (heads up display) text
-void displayText()
-{
-	int i, offset;
-	char line[4][32];
-
-	snprintf(&line[0][0], sizeof(line[0]), "FPS: %u", g_state.fps);
-	snprintf(&line[1][0], sizeof(line[0]), "AA jitter: %u", g_userSettings.enableAA);
-	snprintf(&line[2][0], sizeof(line[0]), "Depth of field: %u", g_userSettings.enableDOF);
-	snprintf(&line[3][0], sizeof(line[0]), "Blur: %u%s", g_userSettings.blur,
-			(g_userSettings.blur && !g_userSettings.enableAA &&
-					!g_userSettings.enableDOF) ? " (AA&DoF off)" : ""
-			);
+	glutPostRedisplay();
 }
 
 
@@ -372,14 +360,17 @@ void displayHelper()
 
 void updateFps()
 {
-  GLuint fpsTimeCurrent = glutGet(GLUT_ELAPSED_TIME);
-  if (fpsTimeCurrent - g_state.baseTime > 1000)
-  {
-	g_state.fps = ceil( g_state.framesElapsed*1000.0 /
-					 (fpsTimeCurrent-g_state.baseTime) );
-	g_state.baseTime = fpsTimeCurrent;
-	g_state.framesElapsed = 0;
-  }
+	if (!g_userSettings.debug)
+		return;
+
+	GLuint fpsTimeCurrent = glutGet(GLUT_ELAPSED_TIME);
+	if (fpsTimeCurrent - g_state.baseTime > 1000)
+	{
+		g_state.fps = ceil( g_state.framesElapsed*1000.0 /
+						 (fpsTimeCurrent-g_state.baseTime) );
+		g_state.baseTime = fpsTimeCurrent;
+		g_state.framesElapsed = 0;
+	}
 }
 
 
@@ -397,7 +388,6 @@ void display(void)
 	if (g_userSettings.enableAA)
 		// if AA is on (regardless of DOF)
 	{
-		currentInfo();
 		switch(g_userSettings.enableAA)
 		{
 			case 2:
@@ -434,8 +424,6 @@ void display(void)
 				//both AA and DOF are enabled
 				//   DoF jitter count and AA jitter count are the same
 			{
-				currentInfo();
-
 				accPerspective (50.0,
 						(GLdouble) viewport[2]/(GLdouble) viewport[3],
 						1.0, 100.0, jitAry[jitter].x, jitAry[jitter].y, 0.33*jitAry[jitter].x, 0.33*jitAry[jitter].y, g_userSettings.enableDOF+5);
@@ -444,8 +432,6 @@ void display(void)
 			else
 				// only AA is enabled
 			{
-				currentInfo();
-
 				accPerspective (50.0,
 						(GLdouble) viewport[2]/(GLdouble) viewport[3],
 						1.0, 100.0, j8[jitter].x, j8[jitter].y, 0.0, 0.0, 1.0);
@@ -468,8 +454,6 @@ void display(void)
 		// only DOF is enabled
 		//   assume a jitter of 8 for DoF only
 	{
-		currentInfo();
-
 		glClear(GL_ACCUM_BUFFER_BIT);
 		for (jitter = 0; jitter < 8; jitter++)
 
@@ -492,8 +476,6 @@ void display(void)
 	else
 		// neither AA nor DOF is currently enabled
 	{
-		currentInfo();
-
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		accPerspective (50.0,
 				(GLdouble) viewport[2]/(GLdouble) viewport[3],
@@ -502,59 +484,40 @@ void display(void)
 
 	}
 
-
-	// display the HUD
-	//displayText();
-
-	// force openGL flush
 	glFlush();
-
 	updateFps();
-
 	glutSwapBuffers();
 }
 
 
-
-// HANDLE WINDOW RESIZINGS
 void reshape(int w, int h)
 {
 	glViewport(0, 0, (GLsizei) w, (GLsizei) h);
 }
 
 
-
-
-
-// HANDLE KEYBOARD PRESSES
 void keyboard(unsigned char key, int x, int y)
 {
 	switch (key)
 	{
 		case 27:
+			cleanup();
 			exit(0);
 			break;
 
 		case '_':
-		case '-':	
-			// for DOF > 50, speed up the adds
-			if (g_userSettings.enableDOF > 50)
-				g_userSettings.enableDOF=g_userSettings.enableDOF-25;
-			else if (g_userSettings.enableDOF > 0)
-				g_userSettings.enableDOF--;
+		case '-':
+			if (g_userSettings.enableDOF > 0)
+				--g_userSettings.enableDOF;
 			break;
 
 		case '+':
 		case '=':
-			if (g_userSettings.enableDOF < 50)
-				g_userSettings.enableDOF++;
-			// for DOF > 50, speed up the subtracts
-			else if (g_userSettings.enableDOF < 1000)
-				g_userSettings.enableDOF=g_userSettings.enableDOF+25;
+			g_userSettings.enableDOF++;
 			break;
 
 		case '0':
-			g_userSettings.enableAA=0;
+			g_userSettings.enableAA = 0;
 			break;
 
 		case '1':
@@ -567,10 +530,10 @@ void keyboard(unsigned char key, int x, int y)
 			g_userSettings.enableAA = 15;
 			break;
 		case '5':
-			g_userSettings.enableAA=24;
+			g_userSettings.enableAA = 24;
 			break;
 		case '6':
-			g_userSettings.enableAA=66;
+			g_userSettings.enableAA = 66;
 			break;
 
 		case 'r':
@@ -579,6 +542,7 @@ void keyboard(unsigned char key, int x, int y)
 			memset(&g_spheres, 0, sizeof(g_spheres));
 			memset(&g_state, 0, sizeof(g_state));
 			break;
+
 		case 'd':
 		case 'D':
 			g_userSettings.debug = g_userSettings.debug ? 0 : 1;
@@ -593,57 +557,22 @@ void keyboard(unsigned char key, int x, int y)
 
 		default:
 			break;
-
-
 	}
 
 	glutPostRedisplay();
-
-}
-
-void processHits(GLint hits, GLuint buffer[], GLuint x, GLuint y)
-{
-
-	unsigned int i, j;
-	GLuint names, *ptr;
-
-	if (hits < 1)
-		return;
-
-	// If the user has clicked the left sphere
-	if ( (buffer[3]==1) || (hits > 1 &&(buffer[7]==1) ) )
-	{
-		if (g_userSettings.debug)
-		  printf("clicked sphere left\n");
-
-		g_spheres[0].hit = glutGet(GLUT_ELAPSED_TIME);
-	}
-
-	// If the user has clicked the right sphere
-	if ( (buffer[3]==2) || (hits > 1 && (buffer[7]==2) ) )
-	{
-		if (g_userSettings.debug)
-		  printf("clicked sphere right\n");
-
-		g_spheres[1].hit = glutGet(GLUT_ELAPSED_TIME);
-	}
-
-
-
 }
 
 void mouse(int button, int state, int x, int y)
 {
-	GLuint selectBuf[512];
-	GLint hits;
-	GLint viewport[4];
-
 	if (button != GLUT_LEFT_BUTTON || state != GLUT_DOWN)
 		return;
 
+	GLint viewport[4];
 	glGetIntegerv(GL_VIEWPORT, viewport);
 
+	GLuint selectBuf[512];
 	glSelectBuffer(512, selectBuf);
+
 	glMatrixMode(GL_PROJECTION);
 	glPushMatrix();
 	glRenderMode(GL_SELECT);
@@ -657,9 +586,21 @@ void mouse(int button, int state, int x, int y)
 
 	displayObjects();
 
-	// determine what was clicked on
-	hits = glRenderMode(GL_RENDER);
-	processHits(hits, selectBuf, x, y);
+	GLint hits = glRenderMode(GL_RENDER);
+	if (hits > 0)
+	{
+		for (int i = 0; i < (sizeof(g_spheres) / sizeof(g_spheres[0])); ++i)
+		{
+			if (g_spheres[i].glName == selectBuf[3] ||
+				(hits > 1 && g_spheres[i].glName == selectBuf[7]))
+			{
+				if (g_userSettings.debug)
+				  printf("clicked sphere %d\n", i);
+
+				g_spheres[i].hit = glutGet(GLUT_ELAPSED_TIME);
+			}
+		}
+	}
 
 	glMatrixMode(GL_PROJECTION);
 	glPopMatrix();
@@ -674,12 +615,15 @@ int main(int argc, char** argv)
 	glutInitWindowSize (1024, 1024);
 	glutInitWindowPosition (100, 100);
 	glutCreateWindow (argv[0]);
-	init();
+	initData();
+	initGL();
 	glutReshapeFunc(reshape);
 	glutDisplayFunc(display);
 	glutKeyboardFunc(keyboard);
 	glutMouseFunc(mouse);
 	glutTimerFunc(50, timer50ms, 0);
+	glutTimerFunc(1000, currentInfo, 0);
 	glutMainLoop();
+	cleanup();
 	return 0;
 }
