@@ -31,8 +31,7 @@
 #define    checkImageHeight 1024
 static GLubyte checkImage[checkImageHeight][checkImageWidth][4];
 static GLuint texName;
-static GLuint enableAA;
-static GLuint enableDOF;
+
 static GLfloat xRotSphere2;
 static GLfloat sphereZdistance;
 static GLfloat sphereZdistance2;
@@ -159,8 +158,8 @@ void currentInfo()
 {
 	if (g_userSettings.debug)
 	{
-		printf("\n\ncurrent AA: %i", enableAA);
-		printf("\ncurrent DOF: %i", enableDOF);
+		printf("\n\ncurrent AA: %i", g_userSettings.enableAA);
+		printf("\ncurrent DOF: %i", g_userSettings.enableDOF);
 		printf("\ncurrent FPS: %i", g_state.fps);
 
 	}
@@ -189,7 +188,7 @@ void timer50ms(int x)
 	// if sphere1 is selected, but either 
 	//  - blurring disabled
 	//  - blurring enabled, but AA off
-	else if ( (!g_userSettings.blur) || (g_userSettings.blur && !enableAA) )
+	else if ( (!g_userSettings.blur) || (g_userSettings.blur && !g_userSettings.enableAA) )
 	{
 		sphereZdistance = sphereZdistance - 3;
 
@@ -220,7 +219,7 @@ void timer50ms(int x)
 	// if sphere2 is selected, but either 
 	//  - blurring disabled
 	//  - blurring enabled, but AA off
-	else if ( (!g_userSettings.blur) || (g_userSettings.blur && !enableAA) )
+	else if ( (!g_userSettings.blur) || (g_userSettings.blur && !g_userSettings.enableAA) )
 	{
 		sphereZdistance2 = sphereZdistance2 - 3;
 
@@ -255,20 +254,20 @@ void leftSphereRender()
 	{
 		if (g_userSettings.blur)
 		{
-			if (enableAA)
+			if (g_userSettings.enableAA)
 			{
 				blurTicks[0]++;
 
 
-				if (enableAA == 2) 
+				if (g_userSettings.enableAA == 2)
 					sphereZdistance = sphereZdistance - 2;
 
-				else if (enableAA == 4)
+				else if (g_userSettings.enableAA == 4)
 					sphereZdistance--;
 
 				else 
 				{
-					if (blurTicks[0] >= ceil(enableAA/4))
+					if (blurTicks[0] >= ceil(g_userSettings.enableAA/4))
 					{
 						sphereZdistance--;
 						blurTicks[0] = 0;
@@ -276,7 +275,7 @@ void leftSphereRender()
 				}
 
 			}
-			else if (enableDOF)
+			else if (g_userSettings.enableDOF)
 				//assumed jitter is 8
 			{
 				blurTicks[0]++;
@@ -336,22 +335,22 @@ void rightSphereRender()
 
 		if (g_userSettings.blur)
 		{
-			if (enableAA)
+			if (g_userSettings.enableAA)
 
 				// BLURRING AND AA ENABLED
 			{
 				blurTicks[1]++;
 
 
-				if (enableAA == 2) 
+				if (g_userSettings.enableAA == 2)
 					sphereZdistance2 = sphereZdistance2 - 2;
 
-				else if (enableAA == 4)
+				else if (g_userSettings.enableAA == 4)
 					sphereZdistance2--;
 
 				else 
 				{
-					if (blurTicks[1] >= ceil(enableAA/4))
+					if (blurTicks[1] >= ceil(g_userSettings.enableAA/4))
 					{
 						sphereZdistance2--;
 						blurTicks[1] = 0;
@@ -359,7 +358,7 @@ void rightSphereRender()
 				}
 
 			}
-			else if (enableDOF)
+			else if (g_userSettings.enableDOF)
 
 				// BLURRING AND DOF ENABLED
 
@@ -487,12 +486,12 @@ void displayText()
 	strcat(line1, tempc );
 
 	// line2 of hud
-	itoa(enableAA, tempc, 10);
+	itoa(g_userSettings.enableAA, tempc, 10);
 	strcpy(line2, "AA jitter: ");
 	strcat(line2, tempc);
 
 	// line3 of hud
-	itoa(enableDOF, tempc, 10);
+	itoa(g_userSettings.enableDOF, tempc, 10);
 	strcpy(line3, "Depth of Field: ");
 	strcat(line3, tempc);
 
@@ -501,7 +500,7 @@ void displayText()
 	itoa(g_userSettings.blur, tempc, 10);
 	strcpy(line4, "Blurring: ");
 	strcat(line4, tempc);
-	if (g_userSettings.blur && !enableAA && !enableDOF)
+	if (g_userSettings.blur && !g_userSettings.enableAA && !g_userSettings.enableDOF)
 		strcat(line4, "(but AA/DoF is off)");
 
 
@@ -584,11 +583,11 @@ void display(void)
 
 	/*  rendering */
 
-	if (enableAA)
+	if (g_userSettings.enableAA)
 		// if AA is on (regardless of DOF)
 	{
 		currentInfo();
-		switch(enableAA)
+		switch(g_userSettings.enableAA)
 		{
 			case 2:
 				jitAry = j2;
@@ -610,17 +609,17 @@ void display(void)
 				break;
 
 			default:
-				printf("Undefined value of EnableAA! %i\n\n", enableAA);
+				printf("Undefined value of EnableAA! %i\n\n", g_userSettings.enableAA);
 				break;
 		}
 
 
 		glClear(GL_ACCUM_BUFFER_BIT);
-		for (jitter = 0; jitter < enableAA; jitter++)
+		for (jitter = 0; jitter < g_userSettings.enableAA; jitter++)
 
 		{
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-			if (enableDOF)
+			if (g_userSettings.enableDOF)
 				//both AA and DOF are enabled
 				//   DoF jitter count and AA jitter count are the same
 			{
@@ -628,7 +627,7 @@ void display(void)
 
 				accPerspective (50.0,
 						(GLdouble) viewport[2]/(GLdouble) viewport[3],
-						1.0, 100.0, jitAry[jitter].x, jitAry[jitter].y, 0.33*jitAry[jitter].x, 0.33*jitAry[jitter].y, enableDOF+5);
+						1.0, 100.0, jitAry[jitter].x, jitAry[jitter].y, 0.33*jitAry[jitter].x, 0.33*jitAry[jitter].y, g_userSettings.enableDOF+5);
 
 			}
 			else
@@ -647,14 +646,14 @@ void display(void)
 			displayHelper (GL_RENDER);
 
 			// set the ACCUM buffer
-			glAccum(GL_ACCUM, 1.0/enableAA);
+			glAccum(GL_ACCUM, 1.0/g_userSettings.enableAA);
 
 		}
 
 		glAccum (GL_RETURN, 1.0);
 
 	}
-	else if (enableDOF)
+	else if (g_userSettings.enableDOF)
 		// only DOF is enabled
 		//   assume a jitter of 8 for DoF only
 	{
@@ -668,7 +667,7 @@ void display(void)
 			accPerspective (50.0,
 					(GLdouble) viewport[2]/(GLdouble) viewport[3],
 					1.0, 100.0, 0.0, 0.0,
-					0.33*j8[jitter].x, 0.33*j8[jitter].y, enableDOF+5);
+					0.33*j8[jitter].x, 0.33*j8[jitter].y, g_userSettings.enableDOF+5);
 			displayHelper (GL_RENDER);
 			glAccum(GL_ACCUM, 1.0/8);
 
@@ -728,52 +727,44 @@ void keyboard(unsigned char key, int x, int y)
 		case '_':
 		case '-':	
 			// for DOF > 50, speed up the adds
-			if (enableDOF > 50)
-				enableDOF=enableDOF-25;
-			else if (enableDOF > 0)
-				enableDOF--;
+			if (g_userSettings.enableDOF > 50)
+				g_userSettings.enableDOF=g_userSettings.enableDOF-25;
+			else if (g_userSettings.enableDOF > 0)
+				g_userSettings.enableDOF--;
 			break;
 
 		case '+':
 		case '=':
-			if (enableDOF < 50)
-				enableDOF++;
+			if (g_userSettings.enableDOF < 50)
+				g_userSettings.enableDOF++;
 			// for DOF > 50, speed up the subtracts
-			else if (enableDOF < 1000)
-				enableDOF=enableDOF+25;
+			else if (g_userSettings.enableDOF < 1000)
+				g_userSettings.enableDOF=g_userSettings.enableDOF+25;
 			break;
 
 		case '0':
-			enableAA=0;
+			g_userSettings.enableAA=0;
 			break;
 
 		case '1':
-			enableAA=2;
-			break;
-
 		case '2':
-			enableAA=4;
-			break;
-
 		case '3':
-			enableAA=8;
+			g_userSettings.enableAA = pow(2, key - '0');
 			break;
 
 		case '4':
-			enableAA=15;
+			g_userSettings.enableAA = 15;
 			break;
-
 		case '5':
-			enableAA=24;
+			g_userSettings.enableAA=24;
 			break;
 		case '6':
-			enableAA=66;
+			g_userSettings.enableAA=66;
 			break;
 
 		case 'r':
 		case 'R':
-			enableAA=0;
-			enableDOF=0;
+			g_userSettings.enableDOF=0;
 			sphereZdistance = 0;
 			sphereZdistance2 =0;
 			sphereHits[0] = 0;
