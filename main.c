@@ -349,61 +349,27 @@ void displayObjects()
 }
 
 
-char *itoa(int num, char *str, int unused)
-{
-	if(str == NULL)
-	{
-		return NULL;
-	}
-	sprintf(str, "%d", num);
-	return str;
-}
-
-
 
 // display 2d HUD (heads up display) text
 void displayText()
 {
-	GLint viewport[4];
+	char line1[32];
+	char line2[32];
+	char line3[32];
+	char line4[32];
 
-	char tempc[15];
-
-	char line1[25];
-	char line2[25];
-	char line3[25];
-	char line4[30];
-
-	// line1 of hud
-	itoa(g_state.fps, tempc, 10);
-	strcpy(line1, "FPS: ");
-	strcat(line1, tempc );
-
-	// line2 of hud
-	itoa(g_userSettings.enableAA, tempc, 10);
-	strcpy(line2, "AA jitter: ");
-	strcat(line2, tempc);
-
-	// line3 of hud
-	itoa(g_userSettings.enableDOF, tempc, 10);
-	strcpy(line3, "Depth of Field: ");
-	strcat(line3, tempc);
-
-
-	// line4 of hud
-	itoa(g_userSettings.blur, tempc, 10);
-	strcpy(line4, "Blurring: ");
-	strcat(line4, tempc);
-	if (g_userSettings.blur && !g_userSettings.enableAA && !g_userSettings.enableDOF)
-		strcat(line4, "(but AA/DoF is off)");
-
+	snprintf(sizeof(line1), &line1, "FPS: %lu", g_state.fps);
+	snprintf(sizeof(line2), &line2, "AA jitter: %lu", g_userSettings.enableAA);
+	snprintf(sizeof(line3), &line3, "Depth of field: %lu", g_userSettings.enableDOF);
+	snprintf(sizeof(line4), &line4, "Blur: %lu%s", g_userSettings.blur,
+			(g_userSettings.blur && !g_userSettings.enableAA &&
+					!g_userSettings.enableDOF) ? " (AA&DoF off)" : ""
+			);
 
 	// necessary for using glFont package
 	//	glfont is being used for 2d text in the hud
 	glEnable(GL_TEXTURE_2D);
 	glEnable(GL_BLEND);
-
-	// get viewport values
-	glGetIntegerv (GL_VIEWPORT, viewport);
 
 	// Set a temporary  & simple 2d projection matrix
 	//   normal projection will be replaced at the end of all this 
@@ -664,11 +630,13 @@ void keyboard(unsigned char key, int x, int y)
 		case 'd':
 		case 'D':
 			g_userSettings.debug = g_userSettings.debug ? 0 : 1;
+			printf("%s debug output\n", g_userSettings.debug ? "Enabled" : "Disabled");
 			break;
 
 		case 'b':
 		case 'B':
 			g_userSettings.blur = g_userSettings.blur ? 0 : 1;
+			printf("%s motion blur\n", g_userSettings.blur ? "Enabled" : "Disabled");
 			break;
 
 		default:

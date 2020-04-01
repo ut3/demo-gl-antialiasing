@@ -1,10 +1,3 @@
-Archival note:
-This source was taken from an archive.org snapshot of Brad Fish's byu.edu webpage:
-  https://web.archive.org/web/20070305024021/http://students.cs.byu.edu/~bfish/glfont.zip
-The snapshot was captured on March 31, 2020 by J Rick Ramstetter
-The source
-
-
 glFont and glFont API
 Copyright (c) 1998 Brad Fish
 E-mail: bhf5@email.byu.edu
