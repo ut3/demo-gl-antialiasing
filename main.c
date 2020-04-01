@@ -32,9 +32,6 @@
 static GLubyte checkImage[checkImageHeight][checkImageWidth][4];
 static GLuint texName;
 
-static GLuint blurTicks[2];
-
-
 GLFONT font;
 
 
