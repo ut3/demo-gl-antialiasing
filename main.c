@@ -32,9 +32,6 @@
 static GLubyte checkImage[checkImageHeight][checkImageWidth][4];
 static GLuint texName;
 
-static GLfloat xRotSphere2;
-
-static GLuint sphereHits[2];
 static GLuint blurTicks[2];
 
 
@@ -56,7 +53,7 @@ struct UserSettings {
 
 struct Sphere {
   GLuint hit;
-  GLuint blurTick;
+  GLuint blurTicks;
   GLfloat zDistance;
   GLfloat rotation;
   GLfloat color;
@@ -99,16 +96,6 @@ void init(void)
 	memset(&g_spheres, 0, sizeof(g_spheres));
 
 	memset(&g_state, 0, sizeof(g_state));
-	g_state.fps = 9999;
-
-	xRotSphere2 = 0;
-
-	sphereHits[0] = 0;
-	sphereHits[1] = 0;
-
-	blurTicks[0] = 0;
-	blurTicks[1] = 0;
-
 	g_state.fps = 999;
 
 	//Create font
@@ -167,7 +154,7 @@ void timer50ms(int x)
 {
 
 	/* calculate sphere 1 z distance and rotation when it is not currently selected */
-	if (!sphereHits[0])
+	if (!g_spheres[0].hit)
 	{
 		g_spheres[0].zDistance -= 0.1;
 
@@ -201,16 +188,16 @@ void timer50ms(int x)
 
 
 	/* calculate sphere 2 z distance and rotation when it is not currently selected */
-	if (!sphereHits[1])
+	if (!g_spheres[1].hit)
 	{
 		g_spheres[1].zDistance = g_spheres[1].zDistance - 0.4;
 		if(g_spheres[1].zDistance < -50)
 		{
 			g_spheres[1].zDistance = 0.0;
-			xRotSphere2 = 0;
+			g_spheres[1].rotation = 0;
 		}
 		else
-			xRotSphere2 = (g_spheres[1].zDistance / (2 * PI_) ) * 360;
+			g_spheres[1].rotation = (g_spheres[1].zDistance / (2 * PI_) ) * 360;
 	}
 	// if sphere2 is selected, but either 
 	//  - blurring disabled
@@ -222,10 +209,10 @@ void timer50ms(int x)
 		if(g_spheres[1].zDistance < -48)
 		{
 			g_spheres[1].zDistance = 0.0;
-			xRotSphere2 = 0;
+			g_spheres[1].rotation = 0;
 		}
 		else
-			xRotSphere2 = (g_spheres[1].zDistance / (2 * PI_) ) * 360;
+			g_spheres[1].rotation = (g_spheres[1].zDistance / (2 * PI_) ) * 360;
 	}
 
 
@@ -246,13 +233,13 @@ the elapsed time
 void leftSphereRender()
 {
 	// if selected, handle the distance (e.g. motion blurring)
-	if (sphereHits[0])
+	if (g_spheres[0].hit)
 	{
 		if (g_userSettings.blur)
 		{
 			if (g_userSettings.enableAA)
 			{
-				blurTicks[0]++;
+				g_spheres[0].blurTicks++;
 
 
 				if (g_userSettings.enableAA == 2)
@@ -261,10 +248,10 @@ void leftSphereRender()
 					--g_spheres[0].zDistance;
 				else 
 				{
-					if (blurTicks[0] >= ceil(g_userSettings.enableAA/4))
+					if (g_spheres[0].blurTicks >= ceil(g_userSettings.enableAA/4))
 					{
 						--g_spheres[0].zDistance;
-						blurTicks[0] = 0;
+						g_spheres[0].blurTicks = 0;
 					}	
 				}
 
@@ -272,11 +259,11 @@ void leftSphereRender()
 			else if (g_userSettings.enableDOF)
 				//assumed jitter is 8
 			{
-				blurTicks[0]++;
-				if (blurTicks[0] >= 3)
+				g_spheres[0].blurTicks++;
+				if (g_spheres[0].blurTicks >= 3)
 				{
 					--g_spheres[0].zDistance;
-					blurTicks[0]=0;
+					g_spheres[0].blurTicks=0;
 				}
 			}
 			// else
@@ -299,12 +286,12 @@ void leftSphereRender()
 		glMaterialfv(GL_FRONT, GL_DIFFUSE, red );
 
 		// disable the sphere click after 500 ms
-		if (  (glutGet(GLUT_ELAPSED_TIME) - sphereHits[0] ) > 500)
+		if (  (glutGet(GLUT_ELAPSED_TIME) - g_spheres[0].hit ) > 500)
 		{
-			sphereHits[0] = 0;
+			g_spheres[0].hit = 0;
 
 			// reset bluring ticks for this sphere
-			blurTicks[0] = 0;	 
+			g_spheres[0].blurTicks = 0;
 		}
 	}
 	else
@@ -324,7 +311,7 @@ void leftSphereRender()
 void rightSphereRender()
 {
 	// if selected, handle the distance (e.g. motion blurring)
-	if (sphereHits[1])
+	if (g_spheres[1].hit)
 	{
 
 		if (g_userSettings.blur)
@@ -333,7 +320,7 @@ void rightSphereRender()
 
 				// BLURRING AND AA ENABLED
 			{
-				blurTicks[1]++;
+				g_spheres[1].blurTicks++;
 
 
 				if (g_userSettings.enableAA == 2)
@@ -344,10 +331,10 @@ void rightSphereRender()
 
 				else 
 				{
-					if (blurTicks[1] >= ceil(g_userSettings.enableAA/4))
+					if (g_spheres[1].blurTicks >= ceil(g_userSettings.enableAA/4))
 					{
 						g_spheres[1].zDistance--;
-						blurTicks[1] = 0;
+						g_spheres[1].blurTicks = 0;
 					}	
 				}
 
@@ -357,11 +344,11 @@ void rightSphereRender()
 				// BLURRING AND DOF ENABLED
 
 			{
-				blurTicks[1]++;
-				if (blurTicks[1] >= 3)
+				g_spheres[1].blurTicks++;
+				if (g_spheres[1].blurTicks >= 3)
 				{
 					g_spheres[1].zDistance--;
-					blurTicks[1]=0;
+					g_spheres[1].blurTicks=0;
 				}
 			}
 			// else
@@ -374,21 +361,21 @@ void rightSphereRender()
 		if(g_spheres[1].zDistance < -48)
 		{
 			g_spheres[1].zDistance = 0.0;
-			xRotSphere2 = 0;
+			g_spheres[1].rotation = 0;
 		}
 		else
-			xRotSphere2 = (g_spheres[1].zDistance / (2 * PI_) ) * 360;
+			g_spheres[1].rotation = (g_spheres[1].zDistance / (2 * PI_) ) * 360;
 
 		// set material properties for color red
 		glMaterialfv(GL_FRONT, GL_DIFFUSE, red );
 
 		// disable the sphere click after 500 ms
-		if (  (glutGet(GLUT_ELAPSED_TIME) - sphereHits[1] ) > 500)
+		if (  (glutGet(GLUT_ELAPSED_TIME) - g_spheres[1].hit ) > 500)
 		{
-			sphereHits[1] = 0;
+			g_spheres[1].hit = 0;
 
 			// reset bluring ticks for this sphere
-			blurTicks[1] = 0;	 
+			g_spheres[1].blurTicks = 0;
 		}
 	}
 	else
@@ -398,7 +385,7 @@ void rightSphereRender()
 
 	}
 	glTranslatef (2.0, -1.0, g_spheres[1].zDistance);
-	glRotatef (xRotSphere2, 1.0, 0.0, 0.0);
+	glRotatef (g_spheres[1].rotation, 1.0, 0.0, 0.0);
 	glRotatef (90.0, 0.0, 1.0, 0.0);
 	glutSolidSphere (1.0, 24, 24);
 }
@@ -758,10 +745,6 @@ void keyboard(unsigned char key, int x, int y)
 
 		case 'r':
 		case 'R':
-			sphereHits[0] = 0;
-			sphereHits[1] = 0;
-			blurTicks[0] = 0;
-			blurTicks[1] = 0;
 			memset(&g_userSettings, 0, sizeof(g_userSettings));
 			memset(&g_spheres, 0, sizeof(g_spheres));
 			memset(&g_state, 0, sizeof(g_state));
@@ -801,7 +784,7 @@ void processHits(GLint hits, GLuint buffer[], GLuint x, GLuint y)
 		if (g_userSettings.debug)
 		  printf("clicked sphere left\n");
 
-		sphereHits[0] = glutGet(GLUT_ELAPSED_TIME);
+		g_spheres[0].hit = glutGet(GLUT_ELAPSED_TIME);
 	}
 
 	// If the user has clicked the right sphere
@@ -810,7 +793,7 @@ void processHits(GLint hits, GLuint buffer[], GLuint x, GLuint y)
 		if (g_userSettings.debug)
 		  printf("clicked sphere right\n");
 
-		sphereHits[1] = glutGet(GLUT_ELAPSED_TIME);
+		g_spheres[1].hit = glutGet(GLUT_ELAPSED_TIME);
 	}
 
 
