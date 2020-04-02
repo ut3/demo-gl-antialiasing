@@ -1,7 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0-only
- *
  * Some GLUT spheres rolling along the Z plane with misc. effects.
- *
  *
  * Copyright 2006 - 2020 J Rick Ramstetter, rick.ramstetter@gmail.com
  * Copyright 2006 Guy Kisel, beefofages@gmail.com
