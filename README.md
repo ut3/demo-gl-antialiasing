@@ -21,4 +21,6 @@ Code taken directly from the Redbook has been Meson-ified as subprojects under .
 	$ ninja
 	$ ./demo-gl-antialiasing
 
+### Screenshot
 
+![demo-gl-antialiasing screenshot](https://raw.githubusercontent.com/ut3/demo-gl-antialiasing/master/screenshot.jpg "demo-gl-antialiasing screenshot")
