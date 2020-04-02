@@ -1,7 +1,8 @@
 /**
  * SPDX-License-Identifier: GPL-2.0-only
  *
- * Copyright 2008-2020 J Rick Ramstetter, rick.ramstetter@gmail.com
+ * Copyright 2006 - 2020 J Rick Ramstetter, rick.ramstetter@gmail.com
+ * Copyright 2006 Guy Kisel, beefofages@gmail.com
  *
  * This file is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2
@@ -67,6 +68,8 @@ struct Sphere
   GLfloat zSpeedDefault;
   GLfloat radius;
   GLfloat xOffset;
+  GLfloat blurredFrames;
+
 };
 
 struct State
@@ -74,8 +77,6 @@ struct State
   GLuint fps;
   GLuint baseTime;
   GLuint framesRendered; /* does not include motion blur or jitter frames */
-
-  GLuint blurredFrames; /* motion blur */
 };
 
 struct CheckerboardFloor
@@ -149,8 +150,8 @@ static void ResetData()
 		struct Sphere* sphere = &g_spheres[i];
 		sphere->glName = i + 1;
 		sphere->colorIdx = i % ( sizeof(g_colors) / sizeof(g_colors[0]) );
-		sphere->zSpeedDefault = (float) RandomInt1to20() / 40.0f;
-		sphere->zSpeed = sphere->zSpeedDefault;
+		sphere->zSpeed = RandomInt1to20() / 40.0f;
+		sphere->zSpeedDefault = sphere->zSpeed;
 		sphere->radius = 1.0;
 
 		printf("Set sphere %d to color %s (idx: %d), speed %f, radius %f, offset %f\n",
@@ -233,7 +234,7 @@ static void PrintData()
 		printf("AA jitter: %u\n", g_userSettings.enableAA);
 		printf("Depth of field: %u\n", g_userSettings.enableDOF);
 		printf("FoV angle: %f\n", g_userSettings.fovAngle);
-		printf("Motion blur frames: %u\n", g_userSettings.enableBlur);
+		printf("Motion blur: %u\n", g_userSettings.enableBlur);
 	}
 	glutTimerFunc(1000, PrintData, 0);
 }
@@ -253,33 +254,21 @@ static void UpdateFps()
 }
 
 
-static void SphereRotationAndZ(struct Sphere* sphere)
+static void SphereTimeStep(struct Sphere* sphere, GLfloat factor)
 {
 	if (sphere->hit &&
 		((glutGet(GLUT_ELAPSED_TIME) - sphere->hit) > g_userSettings.hitDuration))
 	{
 		sphere->hit = 0;
+		sphere->zSpeed = sphere->zSpeedDefault;
 	}
 
-	GLfloat step = sphere->zSpeed;
-	if (sphere->hit)
-	{
-		step *= 4;
-		if (1.0 > step)
-			step = 1.0;
-
-		if (g_userSettings.enableBlur)
-		{
-			step = step / g_userSettings.enableBlur;
-		}
-	}
-
+	GLfloat step = sphere->zSpeed * factor;
 	sphere->zDistance -= step;
 	assert(sphere->zDistance <= 0.0);
 
 	sphere->rotation = (sphere->zDistance / sphere->radius) * (180.0 / M_PI);
-
-	if(sphere->zDistance < -48.0)
+	if (sphere->zDistance < -48.0)
 	{
 		sphere->zDistance = 0.0;
 		sphere->rotation = 0.0;
@@ -287,102 +276,28 @@ static void SphereRotationAndZ(struct Sphere* sphere)
 }
 
 
-/*
-NOTE:
-Z distances for selected balls are handled in display()
-such distances are dependant on the frame rate rather than
-the elapsed time
-*/
-void TickTimer(int _unused)
+void TimerTimeStep(int x)
 {
 	for (int i = 0; i < sizeof(g_spheres) / sizeof(g_spheres[0]); ++i)
 	{
 		struct Sphere *sphere = &g_spheres[i];
-		if (g_userSettings.enableBlur && !sphere->hit)
-		{
-			/* When blur is enabled, only the Render functions move z */
+		if (g_userSettings.enableBlur && sphere->hit)
 			continue;
-		}
-		SphereRotationAndZ(sphere);
+		SphereTimeStep(sphere, 1.0f);
 	}
 
 	glutPostRedisplay();
-	glutTimerFunc(25, TickTimer, 0);
+	glutTimerFunc(1000 / g_fpsTarget, TimerTimeStep, 0);
 }
+
 
 void RenderSphere(struct Sphere* sphere)
 {
 	glPushMatrix();
 	glPushName(sphere->glName); 
 
-	// if selected, handle the distance (e.g. motion blurring)
-	/*
-	if (sphere->hit)
-	{
-		if (g_userSettings.blur)
-		{
-			if (g_userSettings.enableAA)
-			{
-				sphere->blurring++;
-
-				if (g_userSettings.enableAA == 2)
-					sphere->zDistance -= 2;
-				else if (g_userSettings.enableAA == 4)
-					--sphere->zDistance;
-				else
-				{
-					if (sphere->blurring >= ceil(g_userSettings.enableAA/4))
-					{
-						--sphere->zDistance;
-						sphere->blurring = 0;
-					}
-				}
-
-			}
-			else if (g_userSettings.enableDOF)
-				//assumed jitter is 8
-			{
-				sphere->blurring++;
-				if (sphere->blurring >= 3)
-				{
-					--sphere->zDistance;
-					sphere->blurring=0;
-				}
-			}
-			// else
-			// BLURRING W/O DOF OR AA... DOES NOTHING
-			// handled by 50ms timer
-
-		} //end if blurring
-
-		// set material properties for color red
-		glMaterialfv(GL_FRONT, GL_DIFFUSE, g_red );
-
-		// disable the sphere click after 500 ms
-		if (  (glutGet(GLUT_ELAPSED_TIME) - sphere->hit ) > 500)
-		{
-			sphere->hit = 0;
-
-			// reset bluring ticks for this sphere
-			sphere->blurring = 0;
-		}
-	}
-	else
-	{
-		// normal sphere properties
-		glMaterialfv(GL_FRONT, GL_DIFFUSE, g_colors[sphere->colorIdx]);
-
-	}
-	*/
-
-	if (sphere->hit)
-	{
-		glMaterialfv(GL_FRONT, GL_DIFFUSE, g_red);
-	}
-	else
-	{
-		glMaterialfv(GL_FRONT, GL_DIFFUSE, g_colors[sphere->colorIdx]);
-	}
+	glMaterialfv(GL_FRONT, GL_DIFFUSE, sphere->hit ?
+			g_red : g_colors[sphere->colorIdx]);
 
 	glTranslatef (sphere->xOffset, -1.0, sphere->zDistance);
 
@@ -394,22 +309,20 @@ void RenderSphere(struct Sphere* sphere)
 	glPopMatrix();
 }
 
+
 static void RenderObjects()
 {
 	glInitNames();
-
 	for (int i = 0; i < sizeof(g_spheres) / sizeof(g_spheres[0]); ++i)
 	{
-		RenderSphere(&g_spheres[i]);
+		struct Sphere *sphere = &g_spheres[i];
+		RenderSphere(sphere);
 	}
 }
 
-static void RenderScene()
-{
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
 
-	/* Floor */
+static void RenderFloor()
+{
 	glPushMatrix();
 	glEnable(GL_TEXTURE_2D);
 	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
@@ -422,18 +335,12 @@ static void RenderScene()
 	glEnd();
 	glDisable(GL_TEXTURE_2D);
 	glPopMatrix();
-
-	RenderObjects();
 }
 
 
 static void GlutDisplay()
 {
-
-	TickTimer(0);
-
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
 	GLint viewport[4];
 	glGetIntegerv (GL_VIEWPORT, viewport);
 
@@ -446,45 +353,65 @@ static void GlutDisplay()
 		gluPerspective(g_userSettings.fovAngle,
 				(GLdouble) viewport[2] / (GLdouble) viewport[3],
 				1.0, 100.0);
-		RenderScene();
+		glMatrixMode(GL_MODELVIEW);
+		glLoadIdentity();
+		RenderFloor();
+		RenderObjects();
 		glutSwapBuffers();
 		goto finish;
 	}
 
 	if (g_userSettings.enableBlur)
 	{
-		glClear(GL_ACCUM_BUFFER_BIT);
-
 		glMatrixMode(GL_PROJECTION);
 		glLoadIdentity();
 		gluPerspective(g_userSettings.fovAngle,
 				(GLdouble) viewport[2] / (GLdouble) viewport[3],
 				1.0, 100.0);
 
+		int hasBlur = 0;
 		for (int i = 0; i < sizeof(g_spheres) / sizeof(g_spheres[0]); ++i)
 		{
 			struct Sphere *sphere = &g_spheres[i];
-			if (!sphere->hit)
-			{
-				/* When no hit, no blur. Let timer move z. */
-				continue;
-			}
-			SphereRotationAndZ(sphere);
+			if (sphere->hit)
+				++hasBlur;
 		}
-
-		//RenderScene();
-		glAccum(0 == g_state.blurredFrames ? GL_LOAD : GL_ACCUM,
-				1.0 / g_userSettings.enableBlur);
-		++g_state.blurredFrames;
-
-		if (g_state.blurredFrames >= g_userSettings.enableBlur)
+		if (0 == hasBlur)
 		{
-			glAccum(GL_RETURN, 1.0);
+			RenderScene();
 			glutSwapBuffers();
-			g_state.blurredFrames = 0;
+			goto finish;
 		}
-		return;
+
+		glMatrixMode(GL_MODELVIEW);
+
+		for (int j = 0; j < 10; ++j)
+		{
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			glLoadIdentity();
+			RenderFloor();
+
+			for (int i = 0; i < sizeof(g_spheres) / sizeof(g_spheres[0]); ++i)
+			{
+				struct Sphere *sphere = &g_spheres[i];
+				if (sphere->hit)
+				{
+					GLfloat factor = (-sphere->zDistance + 1.0) / 24.0;
+					SphereTimeStep(sphere, factor);
+				}
+				RenderSphere(sphere);
+			}
+
+			glAccum(j == 0 ? GL_LOAD : GL_ACCUM, 1.0 / 10.0f);
+		}
+
+		glAccum(GL_RETURN, 1.0);
+		glutSwapBuffers();
+		goto finish;
 	}
+
+#if 0
+
 
 
 	unsigned char jitter;
@@ -594,6 +521,7 @@ static void GlutDisplay()
 				1.0, 100.0, 0.0, 0.0, 0.0, 0.0, 1.0);
 		RenderScene();
 	}
+#endif
 
 finish:
 	UpdateFps();
@@ -673,9 +601,7 @@ static void Keyboard(unsigned char key, int x, int y)
 
 		case 'b':
 		case 'B':
-			g_userSettings.enableBlur =
-					g_userSettings.enableBlur ? 0 :
-					(GLfloat) g_fpsTarget * ((GLfloat) g_userSettings.hitDuration / 1000.0f);
+			g_userSettings.enableBlur = g_userSettings.enableBlur ? 0 : 1;
 			printf("%s motion blur\n", g_userSettings.enableBlur ? "Enabled" : "Disabled");
 			break;
 
@@ -713,13 +639,15 @@ static void Mouse(int button, int state, int x, int y)
 	{
 		for (int i = 0; i < (sizeof(g_spheres) / sizeof(g_spheres[0])); ++i)
 		{
-			if (g_spheres[i].glName == selectBuf[3] ||
-				(hits > 1 && g_spheres[i].glName == selectBuf[7]))
+			struct Sphere *sphere = &g_spheres[i];
+			if (sphere->glName == selectBuf[3] ||
+				(hits > 1 && sphere->glName == selectBuf[7]))
 			{
 				if (g_userSettings.debug)
 				  printf("clicked sphere %d\n", i);
 
-				g_spheres[i].hit = glutGet(GLUT_ELAPSED_TIME);
+				sphere->hit = glutGet(GLUT_ELAPSED_TIME);
+				sphere->zSpeed *= 2;
 			}
 		}
 	}
@@ -739,8 +667,8 @@ int main(int argc, char** argv)
 	glutDisplayFunc(GlutDisplay);
 	glutKeyboardFunc(Keyboard);
 	glutMouseFunc(Mouse);
-	glutTimerFunc(g_fpsTarget / 1000 /* ms */, TickTimer, 0);
 	glutTimerFunc(1000, PrintData, 0);
+	glutTimerFunc(1000 / g_fpsTarget, TimerTimeStep, 0);
 	glutMainLoop();
 	Cleanup();
 	return 0;
