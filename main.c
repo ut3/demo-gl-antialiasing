@@ -1,5 +1,7 @@
-/**
- * SPDX-License-Identifier: GPL-2.0-only
+/* SPDX-License-Identifier: GPL-2.0-only
+ *
+ * Some GLUT spheres rolling along the Z plane with misc. effects.
+ *
  *
  * Copyright 2006 - 2020 J Rick Ramstetter, rick.ramstetter@gmail.com
  * Copyright 2006 Guy Kisel, beefofages@gmail.com
@@ -55,6 +57,7 @@ struct UserSettings
   GLuint debug; /* 1 if enabled */
   GLfloat fovAngle;
   GLuint hitDuration; /* time in milliseconds that hits are reported */
+  GLuint focus;
 };
 
 struct Sphere
@@ -68,8 +71,6 @@ struct Sphere
   GLfloat zSpeedDefault;
   GLfloat radius;
   GLfloat xOffset;
-  GLfloat blurredFrames;
-
 };
 
 struct State
@@ -87,10 +88,10 @@ struct CheckerboardFloor
 	GLubyte *image;
 };
 
-struct UserSettings g_userSettings;
-struct Sphere g_spheres[2];
-struct State g_state;
-struct CheckerboardFloor g_floor;
+static struct UserSettings g_userSettings;
+static struct Sphere g_spheres[2];
+static struct State g_state;
+static struct CheckerboardFloor g_floor;
 
 static unsigned int RandomInt1to20()
 {
@@ -141,7 +142,7 @@ static void ResetData()
 	/* Spheres */
 	memset(&g_spheres, 0, sizeof(g_spheres));
 
-	/* TODO make dynamic */
+	/* TODO make dynamic to support n>2 spheres */
 	g_spheres[0].xOffset = -2.0;
 	g_spheres[1].xOffset = 2.0;
 
@@ -338,6 +339,60 @@ static void RenderFloor()
 }
 
 
+static jitter_point* JitterArray(GLint match)
+{
+	jitter_point* rv = 0;
+	for (int test = match; rv == 0 && test <= 66; ++test)
+	{
+		switch(test)
+		{
+			case 2:
+				rv = j2;
+				break;
+			case 4:
+				rv = j4;
+				break;
+			case 8:
+				rv = j8;
+				break;
+			case 15:
+				rv = j15;
+				break;
+			case 24:
+				rv = j24;
+				break;
+			case 66:
+				rv = j66;
+				break;
+			default:
+				rv = 0;
+				continue;
+				break;
+		}
+	}
+	assert(rv);
+	return rv;
+}
+
+
+static void SimplePerspective(GLint* viewport)
+{
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	gluPerspective(g_userSettings.fovAngle,
+			(GLdouble) viewport[2] / (GLdouble) viewport[3], 1.0, 100.0);
+}
+
+static void SimpleDisplay(GLint *viewport)
+{
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+	RenderFloor();
+	RenderObjects();
+	glutSwapBuffers();
+}
+
+
 static void GlutDisplay()
 {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -348,27 +403,20 @@ static void GlutDisplay()
 		0 == g_userSettings.enableDOF &&
 		0 == g_userSettings.enableBlur)
 	{
-		glMatrixMode(GL_PROJECTION);
-		glLoadIdentity();
-		gluPerspective(g_userSettings.fovAngle,
-				(GLdouble) viewport[2] / (GLdouble) viewport[3],
-				1.0, 100.0);
-		glMatrixMode(GL_MODELVIEW);
-		glLoadIdentity();
-		RenderFloor();
-		RenderObjects();
-		glutSwapBuffers();
+		SimplePerspective(viewport);
+		SimpleDisplay(viewport);
 		goto finish;
 	}
 
-	if (g_userSettings.enableBlur)
+	/*
+	 * This and the prior case are implemented individually only as a proof-of-
+	 * concept, the SGI accPerspective based code below could handle these
+	 * two cases with little change
+	 */
+	if (0 == g_userSettings.enableAA &&
+		0 == g_userSettings.enableDOF &&
+		0 != g_userSettings.enableBlur)
 	{
-		glMatrixMode(GL_PROJECTION);
-		glLoadIdentity();
-		gluPerspective(g_userSettings.fovAngle,
-				(GLdouble) viewport[2] / (GLdouble) viewport[3],
-				1.0, 100.0);
-
 		int hasBlur = 0;
 		for (int i = 0; i < sizeof(g_spheres) / sizeof(g_spheres[0]); ++i)
 		{
@@ -378,11 +426,13 @@ static void GlutDisplay()
 		}
 		if (0 == hasBlur)
 		{
-			RenderScene();
-			glutSwapBuffers();
+			SimplePerspective(viewport);
+			SimpleDisplay(viewport);
 			goto finish;
 		}
 
+		glClear(GL_ACCUM_BUFFER_BIT);
+		SimplePerspective(viewport);
 		glMatrixMode(GL_MODELVIEW);
 
 		for (int j = 0; j < 10; ++j)
@@ -396,13 +446,13 @@ static void GlutDisplay()
 				struct Sphere *sphere = &g_spheres[i];
 				if (sphere->hit)
 				{
-					GLfloat factor = (-sphere->zDistance + 1.0) / 24.0;
+					GLfloat factor = (-sphere->zDistance + 1.0) / 48.0;
 					SphereTimeStep(sphere, factor);
 				}
 				RenderSphere(sphere);
 			}
 
-			glAccum(j == 0 ? GL_LOAD : GL_ACCUM, 1.0 / 10.0f);
+			glAccum(GL_ACCUM, 1.0 / 10.0f);
 		}
 
 		glAccum(GL_RETURN, 1.0);
@@ -410,118 +460,60 @@ static void GlutDisplay()
 		goto finish;
 	}
 
-#if 0
+	/* The rest is taken from redbook exercises */
 
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glClear(GL_ACCUM_BUFFER_BIT);
 
-
-	unsigned char jitter;
-	jitter_point* jitAry;
-
-
-	/*  rendering */
-
-	if (g_userSettings.enableAA)
-		// if AA is on (regardless of DOF)
+	GLuint jitterMax = g_userSettings.enableAA ? g_userSettings.enableAA : 8;
+	for (GLuint jitter = 0; jitter < jitterMax; ++jitter)
 	{
-		switch(g_userSettings.enableAA)
+		GLdouble pixdx = 0.0;
+		GLdouble pixdy = 0.0;
+		GLdouble eyex = 0.0;
+		GLdouble eyey = 0.0;
+		jitter_point* jitAry = JitterArray(jitterMax);
+
+		if (g_userSettings.enableAA)
 		{
-			case 0:
-				jitAry = 0;
-				break;
-			case 2:
-				jitAry = j2;
-				break;
-			case 4:
-				jitAry = j4;
-				break;
-			case 8:
-				jitAry = j8;
-				break;
-			case 15:
-				jitAry = j15;
-				break;
-			case 24:
-				jitAry = j24;
-				break;
-			case 66:
-				jitAry = j66;
-				break;
-
-
-			default:
-				printf("Undefined value of EnableAA! %i\n\n", g_userSettings.enableAA);
-				break;
+			pixdx = jitAry[jitter].x;
+			pixdy = jitAry[jitter].y;
 		}
 
-
-		glClear(GL_ACCUM_BUFFER_BIT);
-		for (jitter = 0; jitter < g_userSettings.enableAA; jitter++)
-
+		if (g_userSettings.enableDOF)
 		{
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-			if (g_userSettings.enableDOF)
-				//both AA and DOF are enabled
-				//   DoF jitter count and AA jitter count are the same
-			{
-				accPerspective (g_userSettings.fovAngle,
-						(GLdouble) viewport[2]/(GLdouble) viewport[3],
-						1.0, 100.0, jitAry[jitter].x, jitAry[jitter].y, 0.33*jitAry[jitter].x, 0.33*jitAry[jitter].y, g_userSettings.enableDOF+5);
-
-			}
-			else
-				// only AA is enabled
-			{
-				accPerspective (g_userSettings.fovAngle,
-						(GLdouble) viewport[2]/(GLdouble) viewport[3],
-						1.0, 100.0, j8[jitter].x, j8[jitter].y, 0.0, 0.0, 1.0);
-
-			}
-
-
-			// render scene (but not HUD)
-			RenderScene ();
-
-			// set the ACCUM buffer
-			glAccum(GL_ACCUM, 1.0/g_userSettings.enableAA);
-
+			eyex = 0.33 * jitAry[jitter].x;
+			eyey = 0.33 * jitAry[jitter].y;
 		}
 
-		glAccum (GL_RETURN, 1.0);
-
-	}
-	else if (g_userSettings.enableDOF)
-		// only DOF is enabled
-		//   assume a jitter of 8 for DoF only
-	{
-		glClear(GL_ACCUM_BUFFER_BIT);
-		for (jitter = 0; jitter < 8; jitter++)
-
-		{
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-			accPerspective (g_userSettings.fovAngle,
-					(GLdouble) viewport[2]/(GLdouble) viewport[3],
-					1.0, 100.0, 0.0, 0.0,
-					0.33*j8[jitter].x, 0.33*j8[jitter].y, g_userSettings.enableDOF+5);
-			RenderScene();
-			glAccum(GL_ACCUM, 1.0/8);
-
-		}
-		glAccum (GL_RETURN, 1.0);
-
-	}
-
-
-
-	else
-		// neither AA nor DOF is currently enabled
-	{
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		accPerspective (g_userSettings.fovAngle,
 				(GLdouble) viewport[2]/(GLdouble) viewport[3],
-				1.0, 100.0, 0.0, 0.0, 0.0, 0.0, 1.0);
-		RenderScene();
+				1.0, 100.0,
+				pixdx, pixdy,
+				eyex, eyey,
+				g_userSettings.focus + 1);
+
+		glMatrixMode(GL_MODELVIEW);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glLoadIdentity();
+		RenderFloor();
+
+		for (int i = 0; i < sizeof(g_spheres) / sizeof(g_spheres[0]); ++i)
+		{
+			struct Sphere *sphere = &g_spheres[i];
+			if (g_userSettings.enableBlur && sphere->hit)
+			{
+				GLfloat factor = (-sphere->zDistance + 1.0) / 4.0;
+				SphereTimeStep(sphere, factor);
+			}
+
+			RenderSphere(sphere);
+		}
+
+		glAccum(GL_ACCUM, 1.0 / jitterMax);
 	}
-#endif
+	glAccum (GL_RETURN, 1.0);
+	glutSwapBuffers();
 
 finish:
 	UpdateFps();
@@ -543,20 +535,19 @@ static void Keyboard(unsigned char key, int x, int y)
 			exit(0);
 			break;
 
-		case '_':
-		case '-':
-			if (g_userSettings.enableDOF > 0)
-				--g_userSettings.enableDOF;
-			break;
-
-		case '+':
 		case '=':
-			if (g_userSettings.enableDOF < 500)
-				g_userSettings.enableDOF++;
+		case '+':
+			g_userSettings.focus += 5;
+			printf("%c: focus is %u\n", key, g_userSettings.focus);
 			break;
 
-		case '0':
-			g_userSettings.enableAA = 0;
+		case '-':
+		case '_':
+			if (g_userSettings.focus <= 5)
+				g_userSettings.focus = 0;
+			else
+				g_userSettings.focus -= 5;
+			printf("%c: focus is %u\n", key, g_userSettings.focus);
 			break;
 
 		case '}':
@@ -564,6 +555,7 @@ static void Keyboard(unsigned char key, int x, int y)
 			g_userSettings.fovAngle += 2.0;
 			if (g_userSettings.fovAngle > 100.0)
 				g_userSettings.fovAngle = 100.0;
+			printf("%c: FOV angle is %f\n", key, g_userSettings.fovAngle);
 			break;
 
 		case '{':
@@ -571,38 +563,56 @@ static void Keyboard(unsigned char key, int x, int y)
 			g_userSettings.fovAngle -= 2.0;
 			if (g_userSettings.fovAngle < 10.0)
 				g_userSettings.fovAngle = 10.0;
+			printf("%c: FOV angle is %f\n", key, g_userSettings.fovAngle);
 			break;
+
+		case '0':
+			g_userSettings.enableAA = 0;
+			printf("%c: Disabled AA\n", key);
+			break;
+
 		case '1':
 		case '2':
 		case '3':
 			g_userSettings.enableAA = pow(2, key - '0');
+			printf("%c: Enabled %dX AA\n", key, g_userSettings.enableAA);
 			break;
 
 		case '4':
 			g_userSettings.enableAA = 15;
+			printf("%c: Enabled %dX AA\n", key, g_userSettings.enableAA);
 			break;
 		case '5':
 			g_userSettings.enableAA = 24;
+			printf("%c: Enabled %dX AA\n", key, g_userSettings.enableAA);
 			break;
 		case '6':
 			g_userSettings.enableAA = 66;
+			printf("%c: Enabled %dX AA\n", key, g_userSettings.enableAA);
 			break;
 
 		case 'r':
 		case 'R':
 			ResetData();
+			printf("%c: Reset state\n", key);
 			break;
 
 		case 'd':
 		case 'D':
 			g_userSettings.debug = g_userSettings.debug ? 0 : 1;
-			printf("%s debug output\n", g_userSettings.debug ? "Enabled" : "Disabled");
+			printf("%c: %s debug output\n", key, g_userSettings.debug ? "Enabled" : "Disabled");
 			break;
 
 		case 'b':
 		case 'B':
 			g_userSettings.enableBlur = g_userSettings.enableBlur ? 0 : 1;
-			printf("%s motion blur\n", g_userSettings.enableBlur ? "Enabled" : "Disabled");
+			printf("%c: %s motion blur\n", key, g_userSettings.enableBlur ? "Enabled" : "Disabled");
+			break;
+
+		case 'f':
+		case 'F':
+			g_userSettings.enableDOF = g_userSettings.enableDOF ? 0 : 1;
+			printf("%c: %s depth of field \n", key, g_userSettings.enableDOF ? "Enabled" : "Disabled");
 			break;
 
 		default:
