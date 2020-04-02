@@ -13,10 +13,17 @@
  * GNU General Public License for more details.
  */
 
-#include <GL/glut.h>
-#include <math.h>
+#include <stdlib.h>
 #include <stdio.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <time.h>
+#include <math.h>
 #include <string.h>
+#include <unistd.h>
+
+#include <GL/gl.h>
+#include <GL/glut.h>
 
 /* Redbook includes (see ./subprojects/) */
 #include "accpersp.h"
@@ -36,22 +43,24 @@ static const char* g_colorNames[] = {
 /* the color of warp 9 */
 static const GLfloat g_red[4] = { 0.7, 0.0, 0.0, 1.0 };
 
+
 struct UserSettings
 {
-  GLuint enableAA;
-  GLuint enableDOF;
-  GLuint blur;
-  GLuint debug;
+  GLuint enableAA; /* 0 if disabled, a jitter index from jitter.h otherwise */
+  GLuint enableDOF; /* 0 if disabled, 1-250 otherwise */
+  GLuint blur; /* 1 if motion blur is enabled */
+  GLuint debug; /* 1 if enabled */
 };
 
 struct Sphere
 {
-  GLuint hit;
-  GLuint blurTicks;
+  GLuint hit; /* if 1 glut reports a GL_PROJECTION hit */
+  GLuint blurring; /* 1..N if motion blur enabled. The GL_ACCUM frame count. */
   GLfloat zDistance;
-  GLfloat rotation;
-  GLint colorIdx;
-  GLint glName;
+  GLfloat rotation; /* X rotation (roll effect) */
+  GLint colorIdx; /* see g_colors[] */
+  GLint glName; /* unique id for glPushName */
+  GLfloat zSpeed; /* How fast to move on Z */
 };
 
 struct State
@@ -74,6 +83,40 @@ struct Sphere g_spheres[2];
 struct State g_state;
 struct CheckerboardFloor g_floor;
 
+static unsigned int RandomInt1to10()
+{
+	static int didSrand = 0;
+	if (didSrand)
+		goto srand;
+
+	FILE* handle = fopen("/dev/urandom", "r");
+	if(!handle)
+		goto srand;
+
+	unsigned int random = 0;
+	size_t bytes = 0;
+	for (int i = 0; 0 == bytes && i < 50; ++i)
+	{
+		bytes = fread(&random, 1, sizeof(random), handle);
+		usleep(2);
+	}
+	if (0 == bytes)
+		goto srand;
+
+	return (random + 1) % 10;
+
+srand:
+	if (!didSrand)
+	{
+		printf("Warning: using rand() instead of /dev/urandom\n");
+		srand(time(NULL));
+		didSrand = 1;
+	}
+
+	return (rand() + 1) % 10;
+}
+
+
 static void InitSpheres()
 {
 	memset(&g_spheres, 0, sizeof(g_spheres));
@@ -83,10 +126,12 @@ static void InitSpheres()
 		struct Sphere* sphere = &g_spheres[i];
 		sphere->glName = i + 1;
 		sphere->colorIdx = i % ( sizeof(g_colors) / sizeof(g_colors[0]) );
+		sphere->zSpeed = (float) RandomInt1to10() / 20;
 
-		printf("Set sphere %d to color %s (idx: %d)\n",
+		printf("Set sphere %d to color %s (idx: %d) and speed %f\n",
 				sphere->glName, g_colorNames[sphere->colorIdx],
-				sphere->colorIdx);
+				sphere->colorIdx,
+				sphere->zSpeed);
 	}
 }
 
@@ -193,12 +238,14 @@ void updateFps()
 
 void SphereRotationAndZ(struct Sphere* sphere)
 {
-	GLfloat step = 0.1;
+	GLfloat step = sphere->zSpeed;
 	if (sphere->hit &&
 	    (!g_userSettings.blur ||
 		 (!g_userSettings.enableAA && !g_userSettings.enableDOF)))
 	{
-		step = 1.5;
+		step *= 4;
+		if (1.0 > step)
+			step = 1.0;
 	}
 
 	sphere->zDistance -= step;
@@ -226,7 +273,6 @@ void timer25ms(int x) /* 1000 / 25ms = ~40fps */
 	}
 
 	glutPostRedisplay();
-
 	glutTimerFunc(25, timer25ms, 0);
 }
 
@@ -242,7 +288,7 @@ void RenderSphere(struct Sphere* sphere, GLfloat x_translate)
 		{
 			if (g_userSettings.enableAA)
 			{
-				sphere->blurTicks++;
+				sphere->blurring++;
 
 				if (g_userSettings.enableAA == 2)
 					sphere->zDistance -= 2;
@@ -250,10 +296,10 @@ void RenderSphere(struct Sphere* sphere, GLfloat x_translate)
 					--sphere->zDistance;
 				else
 				{
-					if (sphere->blurTicks >= ceil(g_userSettings.enableAA/4))
+					if (sphere->blurring >= ceil(g_userSettings.enableAA/4))
 					{
 						--sphere->zDistance;
-						sphere->blurTicks = 0;
+						sphere->blurring = 0;
 					}
 				}
 
@@ -261,11 +307,11 @@ void RenderSphere(struct Sphere* sphere, GLfloat x_translate)
 			else if (g_userSettings.enableDOF)
 				//assumed jitter is 8
 			{
-				sphere->blurTicks++;
-				if (sphere->blurTicks >= 3)
+				sphere->blurring++;
+				if (sphere->blurring >= 3)
 				{
 					--sphere->zDistance;
-					sphere->blurTicks=0;
+					sphere->blurring=0;
 				}
 			}
 			// else
@@ -293,7 +339,7 @@ void RenderSphere(struct Sphere* sphere, GLfloat x_translate)
 			sphere->hit = 0;
 
 			// reset bluring ticks for this sphere
-			sphere->blurTicks = 0;
+			sphere->blurring = 0;
 		}
 	}
 	else
@@ -337,7 +383,7 @@ void displayObjects()
 
 
 
-void display(void)
+void display()
 {
 	unsigned char jitter;
 	GLint viewport[4];
@@ -476,7 +522,8 @@ void keyboard(unsigned char key, int x, int y)
 
 		case '+':
 		case '=':
-			g_userSettings.enableDOF++;
+			if (g_userSettings.enableDOF < 500)
+				g_userSettings.enableDOF++;
 			break;
 
 		case '0':
